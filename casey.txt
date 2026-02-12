@@ -1,0 +1,1624 @@
+In the course overview, I specifically said there's only two things that will improve the performance of a program: you can reduce the total number of instructions you're asking the CPU to do, or you can alter those instructions to move more efficiently through the CPU. That's really all you can do: reduce the number, or increase the speed.
+
+Everyone laughed at me for this. I couldn't hear you laughing because I'm writing this and can’t hear you when you’re reading it, but I knew you were laughing.
+
+However, I also knew I would have my revenge. The very first thing I'm going to talk about here in the prologue is the biggest multiplier that makes code run slowly:
+
+Waste.
+
+It may sound trite, it may sound ambiguous, but waste really is a massive multiple contributing to the 1000x or 10,000x slower software problem. Waste is a huge multiple in that factor.
+
+When I say waste, I mean literal waste. There are instructions going into the CPU, and a huge number of them are doing literally nothing for you. They don't need to be there. They are doing things that have nothing to do with executing the actual program that you wrote.
+
+I know that sounds crazy. But let me show you that it's really true. If you just do normal programming the way that people are taught nowadays, you will be wasting a huge amount of your CPU resources executing instructions that have nothing to do with the program you actually wanted to run.
+
+Remember my diagram:
+
+A box labeled "CPU" with an arrow pointing into it that says "inst".
+
+
+Instructions are going into the CPU. What kind of instructions are they? We're going to learn all about them later in the course, but for purposes of demonstrating waste, you only need to know the very basics.
+
+Instructions that a CPU can execute are very simple. The one we're going to focus on here is ADD. ADD is an actual x64 instruction. It really exists. I'm not making it up just for explanatory purposes. It takes two things in the CPU - like registers, or sometimes memory addresses - which hold integers. They're can’t be floating point numbers, they can't have fractions, but otherwise they’re just two numbers, like 7 and 400.
+
+ADD adds those two numbers together and produces the result. In particular, it’s going to overwrite its first parameter with the result. So if it’s adding A and B, it’s going to overwrite A with the result of A+B.
+
+Even though you don't know anything about assembly language yet, you already know what this means. It’s doing exactly the same operation that you would get if you wrote A+=B in a higher-level language. If you understand A+=B, then you already understand what ADD effectively does.
+
+In x64 - because again, assembly language is specific to a particular type of processor - that's one way you might ask the CPU to add two numbers together. But there are other instructions that add as well. LEA1, for example, is another instruction that can perform addition.
+
+But LEA is slightly different. One form of the LEA instruction takes two sources that are specified separately from the destination. So unlike ADD, which does A+=B, LEA is more like C=A+B, where the result of the addition goes to a separate destination without overwriting A or B.
+
+Again, understanding these instructions is not the point of this video. We’ll be going into tons of detail on all this stuff later on. All you need to take away from this right now is that these are two of the many ways you might tell an x64 CPU to perform addition.
+
+So, how many wasted instructions do you think there might be in a Python program if you asked it to do A+B? I've told you that in the CPU, it’s one instruction. Even before you know anything else about how a CPU works, you now have a baseline for A+B.
+
+We're not considering anything else in the program, of course - like where A or B come from, or how you happened to get them into the CPU in the first place. We’re just talking about, once you have the two numbers you want to add, it is one instruction to add them together and produce the result.
+
+How many instructions of waste do you think there would be in a Python program that was asked to do A+B? And for comparison purposes, how much waste do you think there would be in a C program for the exact same high-level code?
+
+Why guess or speculate about the answer when we have a computer? We can just literally look!
+
+Here is a listing I have created, which is the simplest possible C program I could think of that forces the C compiler to actually execute one ADD:
+
+/* ========================================================================
+   LISTING 1
+   ======================================================================== */
+
+int __declspec(noinline) add(int A, int B)
+{
+	return A + B;
+}
+
+#pragma optimize("", off)
+int main(int ArgCount, char **Args)
+{
+	return add(1234, 5678);
+}
+Now this is harder than you might think because C compilers, when you ask them to output good code using like optimization flags, they will often aggressively optimize things and the addition will disappear or get folded into something else. As you can see, I've had to decorate this by saying don't inline this function, and don't optimize the main routine at all.
+
+But let's take a look at what the assembly language is that C generates for this A+B. If you don't understand C, that’s totally fine because I think you can probably still recognize the structure of a function, and you can clearly see the A+B, which is all you really need for this example. And down in main where the program enters, you can see me calling my add function with two numbers: 1234, and 5678.
+
+I picked those two numbers because they'll be easy for us to see in the debugger when we step through. We can use them to verify that what we’re looking at really is doing the operation I claim it is.
+
+So if I stop the program right before it does the A+B, you can see here the assembly language instruction that goes with that source line. As you can see, the A+B that we requested is actually just one single instruction. Which one is it? It’s the LEA instruction I talked about:
+
+A screenshot of the Visual Studio debugger stopped on the A+B line of the C program.
+
+
+The next assembly language instruction is RET, which is just the return. So that’s it - the entire function is just that one LEA instruction.
+
+If we want to verify this, we can look at what the registers in the CPU are. Again, you don't have to know what a register is yet. But if you look at that instruction, you can see “RCX” and “RDX” are the two things we're adding together, right? And if I look at their values in the debugger, I see that they are equal to 1234 and 5678 - exactly what we asked for.
+
+As I explained before, the first parameter to LEA will hold the result. Here that is listed as “EAX”. As I step over the instruction, you can see that it fills in EAX with the correct sum.
+
+That was it. That’s the entire function, that one instruction. There was zero waste for A+B. The compiler produced precisely one assembly language instruction, which is the minimum it really could have produced for doing addition in isolation:
+
+lea eax,[rcx+rdx]
+Perfect!
+
+Now let's take a look at what happens if we write the exact same code, but this time we write it in Python:
+
+# ========================================================================
+# LISTING 2
+# ========================================================================
+
+def add(a, b)
+  return a + b
+  
+c = add(1234, 5678)
+So here is the exact same program but written in Python, I've got the same function, also called “add”. It takes A and B just like the other one, and it returns them added together. Also exactly like the C program, I call the function with 1234 and 5678 as the two numbers.
+
+I can't “step through” a Python program in quite the same way as a C program, because that’s not how Python works. Python runs through an interpreter, so what I have to do to see what instructions get sent to the CPU is step through the interpreter itself. I can do that because I built this version of Python from source as a fully optimized build, so it’s the most optimized it can get. And I’ve already set up a breakpoint to trigger right at the point where it's about to do that A+B.
+
+Now I’m going to do the same thing with C, where I step through every instruction the CPU has to do. In C it was just one instruction. Here it is in Python:
+
+A screenshot of the Visual Studio debugger stopped on the BINARY_OP case of the Python interpreter source code.
+
+
+What you see here is the source code for the Python interpreter, stopped on the case for executing a BINARY_OP, of which our A+B is a subcategory. We know the binary operator is addition, but of course Python doesn't actually know that yet. So the first thing it has to do is figure out that it's plus.
+
+So here we go. We keep stepping, and stepping, and stepping, and we look at all the CPU instructions that have to occur. There are dozens of them before we successfully complete the add. 181 of them, in fact:
+
+# ========================================================================
+# LISTING 3
+# ========================================================================
+
+Python 3.11.1 Trace BINARY_OP (add)
+
+~181 ASM instructions
+
+ceval.c:5544 // TARGET(BINARY_OP) { - 147 hits before stepping
+
+00007FFDFD04F40F  mov         qword ptr [r11+38h],r14  
+00007FFDFD04F413  add         r14,2  
+00007FFDFD04F417  jmp         _PyEval_EvalFrameDefault+5872h (07FFDFD04F462h)  
+
+00007FFDFD04F462  mov         rdi,qword ptr [r12-8]  
+00007FFDFD04F467  lea         rax,[__ImageBase (07FFDFCE20000h)]  
+00007FFDFD04F46E  mov         rsi,qword ptr [r12-10h]  
+00007FFDFD04F473  sub         r12,8  
+00007FFDFD04F477  mov         rdx,rdi  
+00007FFDFD04F47A  mov         rcx,rsi  
+00007FFDFD04F47D  call        qword ptr [rax+r13*8+3E7A70h]  
+
+	00007FFDFCF07380  mov         qword ptr [rsp+8],rbx  
+	00007FFDFCF07385  push        rdi  
+	00007FFDFCF07386  sub         rsp,30h  
+	00007FFDFCF0738A  xor         r8d,r8d  
+	00007FFDFCF0738D  mov         rdi,rdx  
+	00007FFDFCF07390  mov         rbx,rcx  
+	00007FFDFCF07393  call        binary_op1 (07FFDFCF06C70h)  
+
+		00007FFDFCF06C70  mov         qword ptr [rsp+10h],rbp  
+		00007FFDFCF06C75  mov         qword ptr [rsp+18h],rsi  
+		00007FFDFCF06C7A  mov         qword ptr [rsp+20h],rdi  
+		00007FFDFCF06C7F  push        r14  
+		00007FFDFCF06C81  sub         rsp,20h  
+		00007FFDFCF06C85  mov         rsi,rdx  
+		00007FFDFCF06C88  movsxd      r9,r8d  
+		00007FFDFCF06C8B  mov         rdx,qword ptr [rcx+8]  
+		00007FFDFCF06C8F  mov         rbp,rcx  
+		00007FFDFCF06C92  mov         rdi,qword ptr [rdx+60h]  
+		00007FFDFCF06C96  test        rdi,rdi  
+		00007FFDFCF06C99  je          binary_op1+2Fh (07FFDFCF06C9Fh)  
+		00007FFDFCF06C9B  mov         rdi,qword ptr [rdi+r9]  
+		00007FFDFCF06C9F  mov         rcx,qword ptr [rsi+8]  
+		00007FFDFCF06CA3  mov         qword ptr [rsp+30h],rbx  
+		00007FFDFCF06CA8  cmp         rcx,rdx  
+		00007FFDFCF06CAB  je          binary_op1+55h (07FFDFCF06CC5h)  
+
+		00007FFDFCF06CC5  xor         ebx,ebx  
+		00007FFDFCF06CC7  lea         r14,[_Py_NotImplementedStruct (07FFDFD2E6AF0h)]  
+		00007FFDFCF06CCE  test        rdi,rdi  
+		00007FFDFCF06CD1  je          binary_op1+0ADh (07FFDFCF06D1Dh)  
+		00007FFDFCF06CD3  test        rbx,rbx  
+		00007FFDFCF06CD6  je          binary_op1+90h (07FFDFCF06D00h)  
+
+		00007FFDFCF06D00  mov         rdx,rsi  
+		00007FFDFCF06D03  mov         rcx,rbp  
+		00007FFDFCF06D06  call        rdi  
+
+			00007FFDFCF60410  mov         rax,qword ptr [rcx+8]  
+			00007FFDFCF60414  test        dword ptr [rax+0A8h],1000000h  
+			00007FFDFCF6041E  je          long_add+24h (07FFDFCF60434h)  
+			00007FFDFCF60420  mov         rax,qword ptr [rdx+8]  
+			00007FFDFCF60424  test        dword ptr [rax+0A8h],1000000h  
+			00007FFDFCF6042E  jne         _PyLong_Add (07FFDFCF60380h)  
+
+			00007FFDFCF60380  sub         rsp,28h  
+			00007FFDFCF60384  mov         r8,rdx  
+			00007FFDFCF60387  mov         rdx,qword ptr [rcx+10h]  
+			00007FFDFCF6038B  lea         rax,[rdx+1]  
+			00007FFDFCF6038F  cmp         rax,3  
+			00007FFDFCF60393  jae         _PyLong_Add+3Eh (07FFDFCF603BEh)  
+			00007FFDFCF60395  mov         r9,qword ptr [r8+10h]  
+			00007FFDFCF60399  lea         rax,[r9+1]  
+			00007FFDFCF6039D  cmp         rax,3  
+			00007FFDFCF603A1  jae         _PyLong_Add+3Eh (07FFDFCF603BEh)  
+			00007FFDFCF603A3  mov         ecx,dword ptr [rcx+18h]  
+			00007FFDFCF603A6  mov         eax,dword ptr [r8+18h]  
+			00007FFDFCF603AA  imul        rcx,rdx  
+			00007FFDFCF603AE  imul        rax,r9  
+>>>>>>>>>>> 00007FFDFCF603B2  add         rcx,rax  
+			00007FFDFCF603B5  add         rsp,28h  
+			00007FFDFCF603B9  jmp         _PyLong_FromSTwoDigits (07FFDFCF5AF10h)  
+
+			00007FFDFCF5AF10  push        rdi  
+			00007FFDFCF5AF12  sub         rsp,20h  
+			00007FFDFCF5AF16  lea         rax,[rcx+5]  
+			00007FFDFCF5AF1A  mov         rdi,rcx  
+			00007FFDFCF5AF1D  cmp         rax,105h  
+			00007FFDFCF5AF23  ja          _PyLong_FromSTwoDigits+2Fh (07FFDFCF5AF3Fh)  
+
+			00007FFDFCF5AF3F  lea         rax,[rcx+3FFFFFFFh]  
+			00007FFDFCF5AF46  cmp         rax,7FFFFFFFh  
+			00007FFDFCF5AF4C  jae         _PyLong_FromSTwoDigits+48h (07FFDFCF5AF58h)  
+			00007FFDFCF5AF4E  add         rsp,20h  
+			00007FFDFCF5AF52  pop         rdi  
+			00007FFDFCF5AF53  jmp         _PyLong_FromMedium (07FFDFCF5AE50h)  
+
+			00007FFDFCF5AE50  mov         qword ptr [rsp+10h],rbx  
+			00007FFDFCF5AE55  push        rsi  
+			00007FFDFCF5AE56  sub         rsp,20h  
+			00007FFDFCF5AE5A  movsxd      rsi,ecx  
+			00007FFDFCF5AE5D  mov         edx,20h  
+			00007FFDFCF5AE62  mov         rcx,qword ptr [_PyObject (07FFDFD3B8CA8h)]  
+			00007FFDFCF5AE69  call        qword ptr [_PyObject+8h (07FFDFD3B8CB0h)]  
+
+				00007FFDFCF73E60  push        rbx  
+				00007FFDFCF73E62  sub         rsp,20h  
+				00007FFDFCF73E66  mov         rbx,rdx  
+				00007FFDFCF73E69  call        pymalloc_alloc (07FFDFCF73C80h)  
+
+					00007FFDFCF73C80  sub         rsp,28h  
+					00007FFDFCF73C84  lea         rax,[rdx-1]  
+					00007FFDFCF73C88  cmp         rax,1FFh  
+					00007FFDFCF73C8E  jbe         pymalloc_alloc+17h (07FFDFCF73C97h)  
+
+					00007FFDFCF73C97  mov         qword ptr [rsp+30h],rbx  
+					00007FFDFCF73C9C  mov         qword ptr [rsp+38h],rsi  
+					00007FFDFCF73CA1  mov         qword ptr [rsp+40h],rdi  
+					00007FFDFCF73CA6  lea         edi,[rdx-1]  
+					00007FFDFCF73CA9  shr         edi,4  
+					00007FFDFCF73CAC  mov         qword ptr [rsp+20h],r14  
+					00007FFDFCF73CB1  lea         r14,[__ImageBase (07FFDFCE20000h)]  
+					00007FFDFCF73CB8  lea         eax,[rdi+rdi]  
+					00007FFDFCF73CBB  lea         rsi,[rax*8+4C7120h]  
+					00007FFDFCF73CC3  mov         rdx,qword ptr [rsi+r14]  
+					00007FFDFCF73CC7  mov         rcx,qword ptr [rdx+10h]  
+					00007FFDFCF73CCB  cmp         rdx,rcx  
+					00007FFDFCF73CCE  je          pymalloc_alloc+9Fh (07FFDFCF73D1Fh)  
+					00007FFDFCF73CD0  mov         r9,qword ptr [rdx+8]  
+					00007FFDFCF73CD4  inc         dword ptr [rdx]  
+					00007FFDFCF73CD6  mov         rax,qword ptr [r9]  
+					00007FFDFCF73CD9  mov         qword ptr [rdx+8],rax  
+					00007FFDFCF73CDD  test        rax,rax  
+					00007FFDFCF73CE0  jne         pymalloc_alloc+1C1h (07FFDFCF73E41h)  
+
+					00007FFDFCF73E41  mov         r14,qword ptr [rsp+20h]  
+					00007FFDFCF73E46  mov         rax,r9  
+					00007FFDFCF73E49  mov         rdi,qword ptr [rsp+40h]  
+					00007FFDFCF73E4E  mov         rsi,qword ptr [rsp+38h]  
+					00007FFDFCF73E53  mov         rbx,qword ptr [rsp+30h]  
+					00007FFDFCF73E58  add         rsp,28h  
+					00007FFDFCF73E5C  ret  
+
+				00007FFDFCF73E6E  test        rax,rax  
+				00007FFDFCF73E71  jne         _PyObject_Malloc+46h (07FFDFCF73EA6h)  
+
+				00007FFDFCF73EA6  add         rsp,20h  
+				00007FFDFCF73EAA  pop         rbx  
+				00007FFDFCF73EAB  ret  
+				
+			00007FFDFCF5AE6F  mov         rbx,rax  
+			00007FFDFCF5AE72  test        rax,rax  
+			00007FFDFCF5AE75  jne         _PyLong_FromMedium+4Ah (07FFDFCF5AE9Ah)  
+
+			00007FFDFCF5AE9A  mov         qword ptr [rsp+30h],rdi  
+			00007FFDFCF5AE9F  mov         eax,esi  
+			00007FFDFCF5AEA1  cdq  
+			00007FFDFCF5AEA2  mov         rcx,rsi  
+			00007FFDFCF5AEA5  sar         rcx,3Fh  
+			00007FFDFCF5AEA9  mov         edi,eax  
+			00007FFDFCF5AEAB  and         rcx,0FFFFFFFFFFFFFFFEh  
+			00007FFDFCF5AEAF  lea         rax,[PyLong_Type (07FFDFD2E52E0h)]  
+			00007FFDFCF5AEB6  xor         edi,edx  
+			00007FFDFCF5AEB8  mov         qword ptr [rbx+8],rax  
+			00007FFDFCF5AEBC  inc         rcx  
+			00007FFDFCF5AEBF  sub         edi,edx  
+			00007FFDFCF5AEC1  mov         qword ptr [rbx+10h],rcx  
+			00007FFDFCF5AEC5  test        dword ptr [PyLong_Type+0A8h (07FFDFD2E5388h)],200h  
+			00007FFDFCF5AECF  je          _PyLong_FromMedium+88h (07FFDFCF5AED8h)  
+
+			00007FFDFCF5AED8  cmp         dword ptr [_Py_tracemalloc_config+4h (07FFDFD2E7324h)],0  
+			00007FFDFCF5AEDF  je          _PyLong_FromMedium+99h (07FFDFCF5AEE9h)  
+
+			00007FFDFCF5AEE9  mov         dword ptr [rbx+18h],edi  
+			00007FFDFCF5AEEC  mov         rax,rbx  
+			00007FFDFCF5AEEF  mov         rdi,qword ptr [rsp+30h]  
+			00007FFDFCF5AEF4  mov         qword ptr [rbx],1  
+			00007FFDFCF5AEFB  mov         rbx,qword ptr [rsp+38h]  
+			00007FFDFCF5AF00  add         rsp,20h  
+			00007FFDFCF5AF04  pop         rsi  
+			00007FFDFCF5AF05  ret  
+
+		00007FFDFCF06D08  mov         rcx,rax  
+		00007FFDFCF06D0B  cmp         rax,r14  
+		00007FFDFCF06D0E  jne         binary_op1+0D9h (07FFDFCF06D49h)  
+
+		00007FFDFCF06D49  mov         rbx,qword ptr [rsp+30h]  
+		00007FFDFCF06D4E  mov         rbp,qword ptr [rsp+38h]  
+		00007FFDFCF06D53  mov         rsi,qword ptr [rsp+40h]  
+		00007FFDFCF06D58  mov         rdi,qword ptr [rsp+48h]  
+		00007FFDFCF06D5D  add         rsp,20h  
+		00007FFDFCF06D61  pop         r14  
+		00007FFDFCF06D63  ret  
+
+	00007FFDFCF07398  mov         rcx,rax  
+	00007FFDFCF0739B  lea         rax,[_Py_NotImplementedStruct (07FFDFD2E6AF0h)]  
+	00007FFDFCF073A2  cmp         rcx,rax  
+	00007FFDFCF073A5  je          PyNumber_Add+35h (07FFDFCF073B5h)  
+	00007FFDFCF073A7  mov         rax,rcx  
+	00007FFDFCF073AA  mov         rbx,qword ptr [rsp+40h]  
+	00007FFDFCF073AF  add         rsp,30h  
+	00007FFDFCF073B3  pop         rdi  
+	00007FFDFCF073B4  ret  
+
+00007FFDFD04F485  sub         qword ptr [rsi],1  
+00007FFDFD04F489  mov         r15,rax  
+00007FFDFD04F48C  jne         _PyEval_EvalFrameDefault+58AFh (07FFDFD04F49Fh)  
+
+00007FFDFD04F49F  sub         qword ptr [rdi],1  
+00007FFDFD04F4A3  jne         _PyEval_EvalFrameDefault+58C6h (07FFDFD04F4B6h)  
+
+00007FFDFD04F4B6  mov         qword ptr [r12-8],r15  
+00007FFDFD04F4BB  test        r15,r15  
+00007FFDFD04F4BE  mov         r15,qword ptr [rsp+30h]  
+00007FFDFD04F4C3  je          _PyEval_EvalFrameDefault+161h (07FFDFD049D51h)  
+00007FFDFD04F4C9  add         r14,2  
+00007FFDFD04F4CD  jmp         _PyEval_EvalFrameDefault+59FCh (07FFDFD04F5ECh)  
+Do you see that lonely ADD instructions, in bold, in the middle of the listing? That was the only instruction that Python executed for our workload. The rest of the instructions were all just waste - things Python needed to do so it could run, but which contributed literally nothing to the computation we asked the computer to perform.
+
+Do you see what I'm talking about when I say “waste”? The waste is real and easy to see. Nobody ever looks, but it's right there in front of you if you go looking for it. And the amount of waste you see is astonishing.
+
+This is why I said at the beginning of the course, we don't need optimization. All we need is to come back to our senses and not write programs that are doing 181 instructions instead of one. When I talked about reducing the number of instructions as being one of the things we could do, I really meant it!
+
+So why has this happened? Why is Python taking 181 instructions to do one instruction worth of work? We'll look at things like bytecode and JITs and stuff like that in more detail later in the course, but conceptually what's happening here is that our instruction stream is being massively widened by all the extra instructions the Python interpreter needs to perform.
+
+We only wanted to do A+B. The C compiler cleanly translated that into one instruction, LEA. It said, “I know how to do A+B, it’s this instruction”, and that was the end of it.
+
+But Python never does that. It first turns the A+B into its own instruction stream - instructions meant to be read by the Python interpreter, not the CPU. So when we go to run the program, we have to run all the instructions for Python to decode and manage that Python instruction stream, generating massive numbers of additional instructions. So the very few instructions we actually asked for are sandwiched in between hundreds of instructions we did not ask for, and the CPU has to do them all.
+
+As a result. one thing we’ll see later in the course, is that if we want our Python code to run more quickly, we essentially have to look for ways of not using Python. There's a lot of ways that you can do this. You can use add-ons that that have ways of doing work in bulk, in precompiled C, so we only have to use a little bit of (very slow) Python to kick off much faster work that can be done in compiled code. Or maybe we can find a JIT that will turn some of our loops into actual streamlined code, like the C version of our add function, so that the Python interpreter will not be involved.
+
+So again, when I say “performance-aware programming”, I’m talking about this awareness: now that we know addition takes one instruction, we can observe when a language is taking massively more than one instruction to do something like addition, and we can come up with strategies to mitigate that.
+
+Hopefully the demonstration of Python using 181 instructions to perform just one operation is convincing. But I also want to reinforce this with an actual performance test. Sure, it’s 181 instructions versus one instruction, but how much slower does that actually run?
+
+Let's take a look at the actual number of cycles - as close as we can measure it - that simple Python and C programs will take to add 4096 integers from an array.
+
+Here is the Python function:
+
+# ========================================================================
+# LISTING 4
+# ========================================================================
+
+def SingleScalar(Count, Input):
+    Sum = 0
+    for Index in range(0, Count):
+        Sum += Input[Index]
+    return Sum
+It takes a Count, which specifies how many integers it's going to add, and an array containing the integers. It's going to start the sum at zero and it will go through each element accumulating the sum. That's it.
+
+In order to determine the peak performance, I’m going to run this function on 4096 integers thousands of times. Each time, I’m going to see how long it takes. And to figure out the peak performance, I’m going to take the fastest run out of them all.
+
+So this is not the expected speed, or the average speed, or the worst-case speed. This is the absolute best-case speed I can get running this function through the Python bytecode interpreter:
+
+A screenshot of a console window with the results of the Python speed test
+
+
+Vanilla Python does not have a function for measuring CPU cycles, only elapsed wall-clock time. So to compensate, I have locked the machine at a 4.2 gigahertz clock rate so we can multiply the time by the clock and get cycles. When we do that, we see that the fastest run of adding 4,096 integers took about 660,000 cycles. That means for every single addition, it took around 161 cycles. Flipping that around, we could say we achieved approximately 0.00619 adds per clock cycle.
+
+Now remember I said this CPU should be able to do one add every cycle. There's a bunch of stuff we’ll see in the next four videos about why you might get a lot more or less than that, of course. But in general, an add every cycle is not a lot to ask from a CPU. 0.000619 is not a good speed!
+
+Let’s see how C does. Here is the exact same addition loop rewritten in C:
+
+/* ========================================================================
+   LISTING 5
+   ======================================================================== */
+
+typedef unsigned int u32;
+u32 SingleScalar(u32 Count, u32 *Input)
+{
+	u32 Sum = 0;
+	for(u32 Index = 0; Index < Count; ++Index)
+	{
+		Sum += Input[Index];
+	}
+	
+	return Sum;
+}
+It looks almost the same. There’s a bit of syntactic difference, of course, but otherwise, if you can read one of them, you can probably read the other.
+
+Now normally, if you were to compile this code without limiting the C compiler, it would actually do some of the things we’re going to do in the next few videos automatically. And I don’t want it to do that yet. So for this example, I compiled the code with some optimizations turned off. I ensured that it would just produce a basic loop with an addition in it, like we would expect.
+
+Running this thousands and thousands of times on 4096 integers produces this result:
+
+
+
+
+0.804715 adds per cycle. That’s not 1 add per cycle, which was what I claimed, and there’s a good reason for that which we’ll learn later. But it’s multiple orders of magnitude closer than Python.
+
+How much closer, exactly? Dividing the two results gives us a Python slowdown factor of around 130x. For every addition the Python program performs, the C program is performing one hundred and thirty additions.
+
+I hope that leaves no doubt in your mind about what's really going on here with respect to waste. Hopefully it's tangible now because not only have we looked at exactly how many more instructions we ask the CPU to do for a Python program, but we also measured the actual cost they incur in terms of runtime.
+
+Now, the cost multiple will obviously vary. They'll vary per system, per program - even per version of Python as they modify the interpreter. You have to be careful when you time things, as we'll see later in the course. But, these numbers are so egregiously huge that even if we're talking about fluctuations in those numbers by ten, twenty, thirty percent, they're still astronomical.
+
+I mean, think about what a 130x slowdown means in real software terms. Would you rather pay for one server every month, or 130 servers, for the exact same amount of work? This is not hypothetical. For any code that actually executes through the Python interpreter instead of calling out to a library written in another language, these are real slowdowns. And it only gets worse from here, because we're comparing the Python program against a bad C program. If we actually wrote a better C program, we can get way higher multiples than this. For that matter, if we just didn’t turn off some of the compiler optimizations I disabled, the exact same C program itself would run considerably faster!
+
+So when you’re using a language like Python, waste is one of the worst multiples you hit. It really can be hundreds. Sometimes it can even be thousands. And it's all about that first thing I talked about when I listed the two options we have for speeding up programs. You don’t have to do anything clever. You don’t have to learn fancy tricks. You don’t need to know a better algorithm. You can get massive speed-ups just from reducing the total number of instructions fed into the CPU. Nothing else happened in this example! All we did was copy the function almost verbatim into a language that didn’t add 180 extra instructions to the one instruction we actually wanted.
+
+So that's waste, and it's massive. But like I said, we can do a lot better than just 130x in terms of the total slowdown that we observe in this example. Our C program is itself is still quite slow, and there are four more things we need to look at to see where its slowness is coming from. We can do a lot better than ~0.8 ads per cycle, and that's what the next four posts will be about: how to get more performance out of that simple C program.
+
+1
+An acronym for “load effective address”, so-named because it was originally meant for doing memory address calculations.
+
+This is the third video in the Prologue of the Performance-Aware Programming series. It discusses one of five multipliers that cause programs to be slow. Please see the Table of Contents to quickly navigate through the rest of the course as it is updated weekly. A lightly-edited transcript of the video appears below.
+
+In the previous post we talked about wasted instructions. Waste typically makes up the largest multiple for slow software. It is made up of instructions that you're forcing the CPU to execute even though they aren’t necessary for your workload. But there are other multiples that occur in the instructions that are necessary.
+
+In other words, if you get rid of all the instructions you really don’t need, and you're left with just instructions you do need, there's still a great deal of variability in how fast the CPU can actually do those instructions. Continuing the example from last time, modern CPUs have lots of ways in which they can do basic operations like addition. If you're not careful, you can easily get yet more large slowdowns because you ask the CPU to perform the addition in an inefficient way.
+
+The code I showed you last time was adding an array of integers together. It was written and compiled by me in such a way as to demonstrate a poorly running version of a summation loop. We were trying to compare Python to C in terms of waste, so I wanted to focus on just the wasted instructions.
+
+Now it's time to talk about the C loop itself, and how to make it run more efficiently. To do that, the first thing we need to understand is the next multiplier in our list of multipliers. Waste was number one, and number two is a thing called “IPC”, or sometimes “ILP”.
+
+IPC (instructions per clock) and ILP (instruction-level parallelism) are two terms that mean essentially the same thing, although they are each used in a slightly different way. Instructions per clock is exactly what it sounds like: it's the average number of machine instructions the CPU executes on every clock cycle. It's exactly like that value I measured last time when I said “adds per cycle”. Instructions per clock is what that number would be if we counted all the instructions, not just the adds.
+
+Instruction-level parallelism is more of a general term used to refer to the fact that a particular CPU is capable of doing some number of instructions at the same time.
+
+Either way, they both describe the aspect of CPU performance which we need to look at now: how was the CPU getting 0.8 adds per cycle last time anyway? And is that the best it could do for integer addition like that? Is 0.8 the highest, or could we have gotten it to do more if we’d asked it to perform the summation in a slightly different way?
+
+Let's think about our loop again. I want to talk about two separate things we can do in the loop to see what happens to the number of instructions we are able to execute per clock. Our loop looked something like this:
+
+
+
+
+It was a sum over an array of input where we iterated an index from zero to the length, and we added each element serially. When we measured the speed, we were asking how many of those serial adds we could do per cycle. When we said we had 0.8 of those per cycle, we were measuring the thing we actually cared about, which is the add.
+
+But the CPU had to do more than just the add. Even before we really know any more assembly language, if you think about the minimum amount of work the CPU had to do, you can already spot what the other things are.
+
+First, there's the input[i]. Somebody has to go get that value from somewhere, so there's some kind of load taking place there. Then there's also another add for i+=1 as well, because every time through the loop it has to go up by one. And finally, there’s i < count, which is some kind of comparison operation that has to happen to know when the loop is complete:
+
+
+
+
+So we can identify at least like four things that have to happen on every iteration of this loop. Although we were only getting 0.8 adds per cycle, we were really executing something like four instructions, because the CPU had to do all of the other work necessary to maintain the loop around the add.
+
+Even before we learn anything else about how this works, we can already see that the CPU is doing a lot more work per cycle than just one instruction. The mental model of a CPU that imagines one instruction going in at a time clearly isn't right, because if it was, there'd be no way we'd be getting anywhere close to one add per cycle. If the CPU only executed one thing at a time, and it has at least four things to do, we’d expect a maximum of something like 0.25 adds per cycle.
+
+Which brings us back to today’s slowdown multiplier. Each CPU has some number of instructions per clock it could be doing at peak, and the closer we get to executing that many instructions on our workload, the closer we get to maximizing the potential of that CPU. If a CPU can do four instructions per clock, but we are only doing two instructions per clock on our workload, then there's an extra 2x headroom there. Maybe we can take advantage of it, or maybe we can’t, it all depends on the specifics of the CPU and the workload. But it's another multiplier. It's not as simple as waste, but it's there.
+
+So let's talk about whether or not we got the most out of this loop. I want to show you two different things we might do.
+
+First, we have seen that there is some loop overhead: on each iteration, we have to do a comparison and an add to move ourselves through the loop. What if we reduce the ratio of the overhead to the work we actually care about? In other words, what if the loop incrementing by one each time, what if it incremented by two? Then, in the body of the loop, we just do two summations - [i] and [i+1].
+
+With the loop written that way, the CPU wouldn’t have to do the comparison as frequently. And, there’s really no limit to how many times we can do that. We could do four sums in the body, and increment by four, and so on.
+
+This is classic technique applied to loops. It's called unrolling a loop. Let's see what happens if we unroll this loop, thereby giving the CPU more of a chance to be fast on those adds by reducing the amount of overhead involved in running the loop.
+
+Here you can see listing five from the last post, when we compared C to Python:
+
+/* ========================================================================
+   LISTING 5
+   ======================================================================== */
+
+typedef unsigned int u32;
+u32 SingleScalar(u32 Count, u32 *Input)
+{
+	u32 Sum = 0;
+	for(u32 Index = 0; Index < Count; ++Index)
+	{
+		Sum += Input[Index];
+	}
+	
+	return Sum;
+}
+I've added two more versions of the routine. In listing six, I have unrolled the loop one time, so that now it’s going by two indices every time and doing two ads in the body of the loop:
+
+/* ========================================================================
+   LISTING 6
+   ======================================================================== */
+
+typedef unsigned int u32;
+u32 Unroll2Scalar(u32 Count, u32 *Input)
+{
+	u32 Sum = 0;
+	for(u32 Index = 0; Index < Count; Index += 2)
+	{
+		Sum += Input[Index];
+		Sum += Input[Index + 1];
+	}
+	
+	return Sum;
+}
+Then in listing seven, I have unrolled it again. It goes by four indices and does four ads in each iteration:
+
+/* ========================================================================
+   LISTING 7
+   ======================================================================== */
+
+typedef unsigned int u32;
+u32 Unroll4Scalar(u32 Count, u32 *Input)
+{
+	u32 Sum = 0;
+	for(u32 Index = 0; Index < Count; Index += 4)
+	{
+		Sum += Input[Index];
+		Sum += Input[Index + 1];
+		Sum += Input[Index + 2];
+		Sum += Input[Index + 3];
+	}
+	
+	return Sum;
+}
+Let’s see what we get when we time the peak performance of these routines:
+
+
+
+
+SingleScaler is the original routine, so we expect it to get the same 0.8 we got last time. That's about as high as it's going to go on this machine. Unroll2Scalar, where we do two adds on the inside of the loop instead of just one, gets 0.993692! We got quite a bit more performance out of that. We're very, very close to one add per cycle.
+
+Unroll4Scalar, on the other hand, couldn’t get any higher. It’s the same speed as Unroll2Scalar. Unrolling to two adds helped us, but unrolling to four doesn’t seem to have helped us at all.
+
+Reducing the overhead for the loop via unrolling got us from 0.8 to nearly 1.0 - and that's great, I'll take it. But is that really as good as it gets? It's certainly suspicious to top out at one add per cycle, because what are the chances of that given how many different things are happening here? Why would that be the maximum?
+
+The answer is because there's something else going on. In order to understand what's really happening, we have to look a little more carefully at how we’re asking the CPU to perform the additions in the loop body.
+
+If we unroll the loop enough, we assume we've gotten the overhead down to a minimal amount. So if we ignore that part of the loop for now, we're still left with what's in the interior: the summation. It’s either a bunch of add instructions, of lea instructions, but whatever the compiler chose it's going to look like a big long string of adds:
+
+
+
+
+Every so often we will ask the CPU to do the comparison and increment for the loop overhead, but otherwise, it’s just going to be long runs of adds.
+
+The problem with this is that the CPU can't work miracles. CPUs extract instruction level parallelism by looking for instructions that can be executed at the same time. If it sees something like one of the adds and the loop comparison, it's thinks, “Great! I can do the add and the comparison at the same time, because the add is completely separate and doesn’t affect any of the things the comparison needs to take as inputs.”
+
+
+
+
+But what about the adds themselves? When the CPU sees those, there's a problem.
+
+Look at what the first operand of every add is: it’s always the same accumulating value. This is both a source and a destination for the add. The input[i] part is coming from somewhere new every time, so that’s not a problem, but the first operand is the result of the previous add. Every time! It always comes from the result of the previous add.
+
+This means what we have inadvertently created1 is a giant serial dependency chain.
+
+This is a term we use to refer to code which is one huge chain of things that are all dependent on each other. Every single add that we do in the entire summation is all dependent on its predecessor, all the way back to the first iteration of the loop! The entire summation is dependent.
+
+When the CPU sees a chain like this, there is nothing it can do to speed it up It must do them in order. It has to wait for each add to finish before it can begin work on the next one. We have created a loop body where the only parallel work that the CPU can possibly do is the loop maintenance. It can do the loop maintenance at the same time as we do our adds, but it can never parallelize the adds themselves.
+
+We can improve the performance of this loop, but to do so we must first break the serial dependency chain. We must find a way to give the CPU more things it can do at the same time.
+
+Fortunately, since summation is a very simple thing, we don't have to work very hard to do that. Summation is just a giant series of additions. What do we know about integer edition? It associates, it commutes - we can reorganize it any way we want. We could swap the order of additions, we could add together pairs of numbers then add those pairs together, we could add even indices and odd indices together as two separate sums, then add those together at the end. We can do basically any arrangement of adds we want, and we can still produce the same sum at the end.
+
+So we have ultimate flexibility to reorganize this algorithm, which is exactly what the CPU can’t do. It doesn't have a ton of logic in there to handle things like this. It would be too complicated in the circuitry to think about major transformations of the instruction stream. So its ability to parallelize is largely limited to just looking at the operands to the instructions, and assuming that things which obviously aren’t dependent can be executed in parallel. It can't do anything much more complicated than that.
+
+But we can.
+
+Let's suppose instead of just doing one sum, we do two sums. We’ll keep the unrolled loops, but we’ll sum into different accumulators. That way, we will have multiple dependency chains, which are independent of each other, so the CPU will always have at more than one add it can do in parallel.
+
+Can this get us up above that one add per cycle limit? Let’s find out.
+
+Here is the fastest listing from the previous trial:
+
+/* ========================================================================
+   LISTING 6
+   ======================================================================== */
+
+typedef unsigned int u32;
+u32 Unroll2Scalar(u32 Count, u32 *Input)
+{
+	u32 Sum = 0;
+	for(u32 Index = 0; Index < Count; Index += 2)
+	{
+		Sum += Input[Index];
+		Sum += Input[Index + 1];
+	}
+	
+	return Sum;
+}
+It was the once-unrolled scalar loop. Along with that I've written a couple other listings to test our dependency chain theory.
+
+Listing eight is DualScalar, which is the exact same as the original SimpleScalar, but now it's doing two separate sums which it then adds at the end:
+
+/* ========================================================================
+   LISTING 8
+   ======================================================================== */
+
+typedef unsigned int u32;
+u32 DualScalar(u32 Count, u32 *Input)
+{
+	u32 SumA = 0;
+	u32 SumB = 0;
+	for(u32 Index = 0; Index < Count; Index += 2)
+	{
+		SumA += Input[Index + 0];
+		SumB += Input[Index + 1];
+	}
+	
+	u32 Sum = SumA + SumB;
+	return Sum;
+}
+Similarly, QuadScalar is doing four separate sums that it adds at the end:
+
+/* ========================================================================
+   LISTING 9
+   ======================================================================== */
+
+typedef unsigned int u32;
+u32 QuadScalar(u32 Count, u32 *Input)
+{
+	u32 SumA = 0;
+	u32 SumB = 0;
+	u32 SumC = 0;
+	u32 SumD = 0;
+	for(u32 Index = 0; Index < Count; Index += 4)
+	{
+		SumA += Input[Index + 0];
+		SumB += Input[Index + 1];
+		SumC += Input[Index + 2];
+		SumD += Input[Index + 3];
+	}
+	
+	u32 Sum = SumA + SumB + SumC + SumD;
+	return Sum;
+}
+Then lastly I have listing ten, QuadScalarPtr, which is the same as listing nine but it does a slightly different loop structure.
+
+/* ========================================================================
+   LISTING 10
+   ======================================================================== */
+
+typedef unsigned int u32;
+u32 QuadScalarPtr(u32 Count, u32 *Input)
+{
+	u32 SumA = 0;
+	u32 SumB = 0;
+	u32 SumC = 0;
+	u32 SumD = 0;
+	
+	Count /= 4;
+	while(Count--)
+	{
+		SumA += Input[0];
+		SumB += Input[1];
+		SumC += Input[2];
+		SumD += Input[3];
+		Input += 4;
+	}
+	
+	u32 Sum = SumA + SumB + SumC + SumD;
+	return Sum;
+}
+We haven’t gotten into enough detail about how CPUs work for me to explain why I made these changes. But don't worry, we'll get to why this helps later when we study IPC for real. For now I just wanted to include it here so you could see what we would get for the high end of performance, which the previous listing won't quite hit because of some other things that get in the way.
+
+Let's take a look at how fast these go when we run them:
+
+
+
+
+As we saw before, Unroll2Scalar is almost one add per clock, but not quite. That's the high end of what we could do with unrolling alone.
+
+Looking at DualScalar, that comes in at 1.267719 adds per clock. That already beats the one add per clock limit we hit before. QuadScalar does better still, hitting 1.700997. And finally, QuadScalarPtr - with the minor tweaks I made to fix some underlying issues we’ll talk about later in the course - almost hits 2 adds per cycle, at 1.948620!
+
+So as you can see, by breaking the serial dependency chain, we were able to go from an asymptote of 1 add per cycle to an asymptote of 2 adds per cycle, easily doubling our performance.
+
+That's actually great, because don’t forget, all these multiples multiply together. Compared to the Python we started with, we got 130x by eliminating waste, but not we’re getting another 2x from increasing the instructions per clock. That means we’re now at 260x!
+
+In addition, 2x is actually a bit misleading - in a good way! Most CPUs runinng most loops can do more parallelism than what we're seeing here. Getting a 2x performance increase by boosting the instruction level parallelism is actually quite modest these days. The chip I’m running these on is very old - that’s one part of it. But also, this loop is not that well suited to get more parallelism because all we're doing is a trivial add. Usually loops do a more operations compared to how much memory they pull in, whereas we do just one operation for each new thing we get from memory. CPUs are usually not designed for that ratio. So one of the things we're actually seeing here is the fact that we have to do too much loading and much computation work. If we had more computations to do, we could probably get more IPC out of this loop.
+
+But even with this worst-case scenario, we still more-than-doubled the performance! We went from 0.8 to 1.9. And it only gets better from there.
+
+This chip itself can sometimes do 3x, even 4x (in theory) if you have a really optimal problem for it. Newer chips can do even more than that. Apple’s M-series chips have a theoretical maximum of eight instructions per clock, if I recall. I don't have one so I couldn’t say how likely you are to get that, but the point is, the theoretical maximum is twice that of this chip we’re running these tests on.
+
+Zen4 chips, and even later Intel chips, all have more theoretical IPC than the CPU we’re testing with. So 2x really is going to be a minimum you could expect, and the trend is constantly going up.
+
+Either way, even on this chip, 2x is actually small compared to what we could do to improve the performance of this loop. We can get a much larger speed increase by exploiting a different kind of parallelism in the body of the loop… and that's what we're going to talk about in the next video.
+
+1
+Well, I created it intentionally because I was trying to demonstrate something. But you can imagine having written a loop like this one inadvertently!
+
+This is the fourth video in the Prologue of the Performance-Aware Programming series. It discusses one of five multipliers that cause programs to be slow. Please see the Table of Contents to quickly navigate through the rest of the course as it is updated weekly. A lightly-edited transcript of the video appears below.
+
+In the overview video for the course, I specifically said that there are only two things we can do to improve our performance:
+
+Reduce the total number of instructions that we issue
+
+Figure out how to move instructions through the CPU faster by either changing what they, changing their order, or changing their memory access pattern
+
+We saw in the post about waste that there are often a lot of instructions we can simply eliminate. They aren't necessary for solving the problem. When we get rid of those instructions, the code goes faster.
+
+In the previous post on instruction parallelism, we saw how even the same instructions can sometimes be made to go through the CPU a lot faster. If we change things like whether or not they're dependent on each other, which is something we often have the flexibility to do, we can get more performance out of the same instructions.
+
+Now it’s time to go back to that first type of improvement, where we reduce the total number of instructions.
+
+The idea of instruction level parallelism that we talked about last time — where we're looking at a bunch of adds and trying to get the CPU to simultaneously issue as many of them as possible — can also be approached in another way. We can do the same thing, but using a different method. We can actually reduce the total number of instructions that the CPU has to process to do the same number of adds.
+
+That approach is something you've probably heard of before, and it's the third multiplier in our set of five: SIMD.
+
+SIMD stands for “single instruction, multiple data”. It means exactly what it sounds like it means: the CPU operates on multiple pieces of data with a single instruction.
+
+Previously when we were looking at instruction level parallelism, we had this big series of add instructions. We tried some things, like using multiple accumulators so the CPU could issue more of the adds at the same time. This was very effective, and we saw clear improvements that allowed us to go from less than one add per cycle to almost two adds per cycle.
+
+A doubling of performance is always fantastic. It may not seem like that much because we started out with waste being such a huge multiplier. But when you think about it, if you can double the performance of an algorithm, that's great. So we have to keep in mind that these are still big multipliers even though they look small when compared to something as huge as waste.
+
+So how does SIMD help us? SIMD is a CPU design principle based on the observation that most of a program’s running time is spent doing repetitive operations on large amounts of data. When you look at the loops that dominate the runtime of a program, they tend to repeat the same instructions over and over and over. If the loop is 20 instructions long, and we’re doing it to 10,000 elements, then we’re really just repeating the same 20 things 10,000 times with a new piece of data each time.
+
+What if we took advantage of this fact? Instead of each instruction operating on just one piece of data, what if we just baked in the concept that when we do something like an add, we will do it to multiple pieces of data at the same time. In our case, what if we made an add instruction that actually does all four adds of our loop into all four accumulators in one instruction.
+
+In other words, instead of each unit of data being just one number, what if they each held four separate numbers?
+
+That's what x64’s SSE instruction set is. SSE stands for “Streaming SIMD Extensions”, and they were an extension of x64 that provided instructions to operate on more the one value at the same time.
+
+Take our add instruction as an example. With SSE, we get a new instruction, called paddd. The “p” prefix stands for “packed”, because we are “packing” multiple pieces of data together to operate on. The “d” suffix stands for “DWORD”, which means 32-bits in this case, which is the size of the integer we are trying to add. And otherwise, it’s just “add” like it was before.
+
+Now when we use paddd instead of add, the CPU will take four things at a time and add them to four accumulators. Each paddd is equivalent to four separate adds.
+
+We haven’t talked about loading data or registers or any of that yet. After the prologue of the course, when we get to how CPUs work, I’ll explain in more detail how packed data differs from scalar data. But for purposes of this overview, all you really need to know is that conceptually, SSE expanded the size of the data values that could move through the CPU. Instead of 32 bits or 64 bits worth of storage for each value, it started tracking 128 bit values as well. But instead of using the 128-bit values to refer to giant numbers, it divides them up into pieces that each hold separate numbers. So if you are dealing with 32-bit integers, a 128-bit value can store four separate integers.
+
+And these “packed” values always line up. We call these sub-parts “lanes”. So a packed set of four accumulators has one accumulator in “lane 0”, another accumulator in “lane 1”, and so on.
+
+
+
+
+When we load in four inputs, and add them to four accumulators, they’re always paired up such that input 0 adds to accumulator 0, 1 to 1, 2 to 2, and so on. Except for special operations that intentionally mix data across lanes, the lanes pair up directly in every operation.
+
+In many ways, this is analogous to the mathematical notion of vectors. When you think of a vector with four elements, it behaves very similarly to the way values behave in a SIMD instruction set. When we add two mathematical vectors together, we just add the corresponding elements from each vector. And that’s exactly the same thing that happens with SIMD.
+
+But if you think about what’s happening here, it may be very confusing as to why this helps performance. We reduce the number of instructions from four down to one, but the CPU still has to do the same amount of actual arithmetic. It still has to do all four adds. We haven't really saved any work, have we?
+
+We actually have, and the reason why is due to all that instruction-level parallelism stuff we talked about last time.
+
+All that work of decoding instructions, figuring out what they are, figuring out what their inputs are, determining if they are dependent on each other — all that stuff is expensive. It’s real work the CPU has to do. And there’s a limit to how much of that work the CPU can do on each cycle, just like there’s a limit to how many additions it can do.
+
+The big bonus of SIMD is that we save a ton of that front-end work. Instead of doing all the work to process four separate add instructions in the instruction stream, we can do the same amount of arithmetic on the back-end for just one SIMD instruction. We don’t save arithmetic time, but we save a ton of decoding and bookkeeping time!
+
+Now, back to x64. In addition to SSE, there are two other broad categories of SIMD instructions that have been introduced. SSE is supported on basically everything. AVX is supported on basically everything as well, but some older chips might not have it, or might not have all of the instructions in it. Then there's a thing called AVX-512, which is supported in very few consumer chips. Over the next few years it may become more mainstream, but right now it’s unlikely that you can use AVX-512 unless you are programming for a controlled environment, like a server, where you know for a fact that the chip supports it.
+
+Each of these instruction set families widens the size the data that can be processed with each instruction. SSE could do four 32-bit operations per instruction, like I described. AVX increases that to eight. AVX-512 increases it yet again to sixteen. As CPU designers were able to devote more and more space to arithmetic, they kept wanting to save more front-end work, so the sizes just kept expanding.
+
+As I alluded to before, when I say four, eight, and sixteen, what I'm talking about is the number of lanes you would get if you were using a standard 32 bit lane size. We'll talk more about how lanes work and all that later in the course. But for now it's worth mentioning that you can get even more lanes in each of these instruction sets if you use smaller lane widths.
+
+Let's say we were only interested in 16-bit integers. Well we still have 4x32-bits worth of space in SSE, which is 128 bits. We could pack eight 16-bit integers into 128-bits, so if we don’t mind restricting ourselves to smaller numbers, we can double the number of adds we can do in one instruction just by asking the CPU to do 16-bit adds instead of 32-bit adds in SSE.
+
+This holds true for any combination you want. If you want to add 8-bit numbers together on AVX-512, well, AVX-512 is 512 bits per value. It’s 16 lanes at 32-bit. But if we wanted to do 8-bit, well, that would be 64 lanes! So we could do sixty-four adds in one instruction on AVX-512!
+
+But we'll cover all of this later in the course. I don't mean to confuse you by bringing out too many details here, but I just wanted to give you the broad strokes of SIMD on x64, and underscore the fact that these instruction sets are really about operating on 128 bits, 256 bits or 512 bits at a time. How many elements that is depends entirely on how many bits your algorithm needs per element. If you can go lower than 32 bits, you’ll get even more performance.
+
+Now, I’d like to show you a demonstration of how SIMD affects the performance of our loop. But before I do, I’d like add a caveat.
+
+This demonstration is going to make it look extremely easy to change a loop from scalar to SSE and AVX. For the most part, it really is going to be as easy as changing add to paddd. But the only reason it’s going to be that easy is because our simple sum happens to work no matter how the input is organized.
+
+When we looked at IPC in the previous post, if you remember, I looked at that long series of ads and I said, “Well, because it's just a long string of integer additions, we're free to reorganize them however we want.” Addition is the best-case operator for data reorganization! And that’s true for SIMD as well. Because we don’t care about the order in which our additions occur, it ends up being very simple to turn our summation into a SIMD summation.
+
+When we do the harder work of creating SIMD versions of more complex operations later in the course, you'll see that it is not always this simple. There is real work required to convert an algorithm to SIMD, especially in SSE and AVX, because they're fairly awkward instruction sets. There is often a lot of elbow grease that goes into organizing data up front, or shuffling data on input, so that you can actually get reasonable performance out of SIMD code.
+
+So I just wanted to caveat that before I show you the demo, because it's going to look a lot easier than it usually is, and I wanted to be upfront about that.
+
+OK. With the caveat behind us, let's take a look at what changing our loop to use SIMD operations does to our performance.
+
+Here we have listing five again, which was SingleScalar:
+
+typedef unsigned int u32;
+u32 SingleScalar(u32 Count, u32 *Input)
+{
+	u32 Sum = 0;
+	for(u32 Index = 0; Index < Count; ++Index)
+	{
+		Sum += Input[Index];
+	}
+	
+	return Sum;
+}
+This is the naive loop that we wrote originally to see how fast the C summation would run. I've taken that exact same loop, and I've rewritten it with SSE in listing 11:
+
+/* ========================================================================
+   LISTING 11
+   ======================================================================== */
+
+typedef unsigned int u32;
+u32 __attribute__((target("ssse3"))) SingleSSE(u32 Count, u32 *Input)
+{
+	__m128i Sum = _mm_setzero_si128();
+	for(u32 Index = 0; Index < Count; Index += 4)
+	{
+		Sum = _mm_add_epi32(Sum, _mm_load_si128((__m128i *)&Input[Index]));
+	}
+
+	Sum = _mm_hadd_epi32(Sum, Sum);
+	Sum = _mm_hadd_epi32(Sum, Sum);
+	
+	return _mm_cvtsi128_si32(Sum);
+}
+Now I realize that looks a bit scary, but the only reason for that is that I am using the Intel-defined intrinsic functions in C to tell the compiler what SIMD instructions I want to use. There are ways we can make this look a lot nicer, and we'll look at that later on in the class. But for now I just wanted to show you what it looks like before we try to, say, use overloaded operators to hide the unwieldiness, or use auto-vectorization to get the compiler to do it for us.
+
+But although it looks more complicated than SimpleScalar, it’s actually just a more verbose version of the exact same loop. __m128i is just a way of saying “128-bit value holding integers”. _mm_setzero_si128 is just a really long-winded way to write “128 bits of all zeroes”.
+
+Same thing with _mm_add_epi32. It’s literally just “+” for 32-bit integers, but doing four at a time instead of one. And of course if you want to load one of these 128-bit values from memory, you use _mm_loadu_si128.
+
+Now, the end of the function is legitimately different. Why? Because we have a single value — Sum — which is holding four separate accumulations. We need to return only one accumulation. So we need two “horizontal adds” to combine the lanes of one SIMD value, adding neighbors together twice to produce the “sum of sums”.
+
+But this really isn’t all that different. It’s actually just like listing nine:
+
+/* ========================================================================
+   LISTING 9
+   ======================================================================== */
+
+typedef unsigned int u32;
+u32 QuadScalar(u32 Count, u32 *Input)
+{
+	u32 SumA = 0;
+	u32 SumB = 0;
+	u32 SumC = 0;
+	u32 SumD = 0;
+	for(u32 Index = 0; Index < Count; Index += 4)
+	{
+		SumA += Input[Index + 0];
+		SumB += Input[Index + 1];
+		SumC += Input[Index + 2];
+		SumD += Input[Index + 3];
+	}
+	
+	u32 Sum = SumA + SumB + SumC + SumD;
+	return Sum;
+}
+See how we had to add the four separate sums together? Well, since our SIMD loop is effectively keeping four sums, the final lines of SingleSSE also have to combine the four accumulators. The horizontal adds do just that, as we’ll see later in the course when we cover SIMD in depth.
+
+The AVX version is almost exactly the same:
+
+/* ========================================================================
+   LISTING 12
+   ======================================================================== */
+
+typedef unsigned int u32;
+u32 __attribute__((target("avx2"))) SingleAVX(u32 Count, u32 *Input)
+{
+	__m256i Sum = _mm256_setzero_si256();
+	for(u32 Index = 0; Index < Count; Index += 8)
+	{
+		Sum = _mm256_add_epi32(Sum, _mm256_loadu_si256((__m256i *)&Input[Index]));
+	}
+
+	Sum = _mm256_hadd_epi32(Sum, Sum);
+	Sum = _mm256_hadd_epi32(Sum, Sum);
+	__m256i SumS = _mm256_permute2x128_si256(Sum, Sum, 1 | (1 << 4));
+	Sum = _mm256_add_epi32(Sum, SumS);
+	
+	return _mm256_cvtsi256_si32(Sum);
+}
+The only change you'll see in the main loop itself is that the intrinsics change from using an “_mm” prefix to using an “_mm256” prefix, and the values change from “__m128i” to “__m256i”. These small name changes are how you tell the compiler you’re using 256-bit SIMD instead of 128-bit SIMD. We're effectively using the exact same intrinsics, but eight wide instead of four wide.
+
+Like the previous listing, the only real weirdness comes at the end. But unlike the SSE version, where it has a clear analog in the original scalar code, there’s no good explanation for why the AVX version has that bizarre _mm256_permute2x128_si256. It will make sense to you when we get to AVX programming later, but to give you the basic idea, AVX works by keeping its 256-bit values split, conceptually, into two 128-bit pieces. It is less a 256-bit instruction set than it is a 128-bit instruction set that happens to operate on two 128-bit values at the same time. And as a result, if you want to merge results from the two halves, you need a special instruction to do so.
+
+And that’s what the _mm256_permute2x128_si256 is doing here.
+
+Of course, I’ll explain all that in great detail later in the course. For now, it’s best not to dwell on the vagaries of AVX as compared to SSE. It’s a very unpleasant instruction set to work with, and there are often hiccups like this where a routine that was written in SSE cannot be directly upgraded to AVX. You often have to insert special lane-crossing instructions like this, or reorganize the code. It’s unfortunate.
+
+But I digress. For right now, I just wanted you to see what raw SSE and AVX routines look like written in C intrinsics. Even though they’re wordy, if you know how they work, they're actually very quick to write, even raw like this. Even if you don't use a library to make it look a little cleaner for you when you're using it, or rely on auto-vectorization from the compiler to do it for you, you can still write these loops by hand without that much fuss.
+
+So let's go ahead and run these:
+
+
+
+
+We've got the SingleScalar version, which was the original naive loop that we're comparing this to. It gets between 0.8 and 0.9 adds per cycle, like we expected. SingleSSE is the same exact loop, but doing four wide, and it gets a whopping 3.1 adds per cycle — 50% faster than our fastest loop from last time! Then SimpleAVX jumps up even further, to 7.0 adds/cycle, blowing all previous loops out of the water.
+
+Remember, we haven't done anything smart with the loop at all. All we did was tell the compiler to generate wide loads and adds instead of single loads and adds. That's it. But without doing anything fancier than that, we got massive speed increases that were much larger than anything we were able to do with just IPC alone.
+
+So as you can see, these instructions really do let the CPU do adds in bulk. We didn’t get a full 4x or 8x for SSE and AVX. But that’s actually typical. There are many factors in how fast a CPU can execute instructions, so simply because the instruction itself does four or eight times more work doesn’t always mean you get that exact multiple. You’re likely to get something shy of it.
+
+But not that much shy. It actually is pretty common to get a speed increase roughly proportional to the width increase, just not 100%.
+
+So that's pretty great, right? Our biggest speed win yet, and all we had to do was ask the compiler to use SIMD instructions.
+
+But that said, last time we saw that doing some work on the organization of the loop got us over 2x the performance from the same basic instructions. Now we're seeing that if we just use SIMD instructions, we get 3x or 7x. So we naturally might wonder, can we get both? Can we both increase our instructions per clock and use a wide instruction?
+
+If you think about it, our SSE and AVX loops are going to end up in the exact same situation with paddd as we did with add. Using SIMD instructions doesn't change how the instruction stream looks to the CPU in terms of dependencies.
+
+So although now the CPU is seeing a bunch of paddd instructions instead of add instructions, it’s still seeing them as one big long serial dependency chain.
+
+We can do that exact same thing with paddd — which does multiple adds at a time — as we did for our add instructions that did one add at a time. We can unroll the loop and use multiple accumulators to break up the single dependency chain, giving the CPU more independent paddds to work with.
+
+Let's see what happens if we do that.
+
+Here is listing ten again, which was the QuadScalarPtr loop from last time:
+
+/* ========================================================================
+   LISTING 10
+   ======================================================================== */
+
+typedef unsigned int u32;
+u32 QuadScalarPtr(u32 Count, u32 *Input)
+{
+	u32 SumA = 0;
+	u32 SumB = 0;
+	u32 SumC = 0;
+	u32 SumD = 0;
+	
+	Count /= 4;
+	while(Count--)
+	{
+		SumA += Input[0];
+		SumB += Input[1];
+		SumC += Input[2];
+		SumD += Input[3];
+		Input += 4;
+	}
+	
+	u32 Sum = SumA + SumB + SumC + SumD;
+	return Sum;
+}
+It was the fastest loop we had without SIMD. We also have our SingleAVX loop from listing twelve, which was our fastest SIMD loop. And I've added listing thirteen, which is just like the SingleAVX loop, but unrolled once with two accumulators. It’s basically the AVX version of the old DualScalar function:
+
+/* ========================================================================
+   LISTING 13
+   ======================================================================== */
+
+typedef unsigned int u32;
+u32 __attribute__((target("avx2"))) DualAVX(u32 Count, u32 *Input)
+{
+	__m256i SumA = _mm256_setzero_si256();
+	__m256i SumB = _mm256_setzero_si256();
+	for(u32 Index = 0; Index < Count; Index += 16)
+	{
+		SumA = _mm256_add_epi32(SumA, _mm256_loadu_si256((__m256i *)&Input[Index]));
+		SumB = _mm256_add_epi32(SumB, _mm256_loadu_si256((__m256i *)&Input[Index + 8]));
+	}
+
+	__m256i Sum = _mm256_add_epi32(SumA, SumB);
+
+	Sum = _mm256_hadd_epi32(Sum, Sum);
+	Sum = _mm256_hadd_epi32(Sum, Sum);
+	__m256i SumS = _mm256_permute2x128_si256(Sum, Sum, 1 | (1 << 4));
+	Sum = _mm256_add_epi32(Sum, SumS);
+	
+	return _mm256_cvtsi256_si32(Sum);
+}
+We’ve also got listing fourteen, where I’ve unrolled it again and used four accumulators, just like QuadScalar:
+
+/* ========================================================================
+   LISTING 14
+   ======================================================================== */
+
+typedef unsigned int u32;
+u32 __attribute__((target("avx2"))) QuadAVX(u32 Count, u32 *Input)
+{
+	__m256i SumA = _mm256_setzero_si256();
+	__m256i SumB = _mm256_setzero_si256();
+	__m256i SumC = _mm256_setzero_si256();
+	__m256i SumD = _mm256_setzero_si256();
+	for(u32 Index = 0; Index < Count; Index += 32)
+	{
+		SumA = _mm256_add_epi32(SumA, _mm256_loadu_si256((__m256i *)&Input[Index]));
+		SumB = _mm256_add_epi32(SumB, _mm256_loadu_si256((__m256i *)&Input[Index + 8]));
+		SumC = _mm256_add_epi32(SumC, _mm256_loadu_si256((__m256i *)&Input[Index + 16]));
+		SumD = _mm256_add_epi32(SumD, _mm256_loadu_si256((__m256i *)&Input[Index + 24]));
+	}
+
+	__m256i SumAB = _mm256_add_epi32(SumA, SumB);
+	__m256i SumCD = _mm256_add_epi32(SumC, SumD);
+	__m256i Sum = _mm256_add_epi32(SumAB, SumCD);
+
+	Sum = _mm256_hadd_epi32(Sum, Sum);
+	Sum = _mm256_hadd_epi32(Sum, Sum);
+	__m256i SumS = _mm256_permute2x128_si256(Sum, Sum, 1 | (1 << 4));
+	Sum = _mm256_add_epi32(Sum, SumS);
+	
+	return _mm256_cvtsi256_si32(Sum);
+}
+And finally, I have an AVX version of QuadScalarPtr, which was the fastest non-SIMD routine:
+
+/* ========================================================================
+   LISTING 15
+   ======================================================================== */
+
+typedef unsigned int u32;
+u32 __attribute__((target("avx2"))) QuadAVXPtr(u32 Count, u32 *Input)
+{
+	__m256i SumA = _mm256_setzero_si256();
+	__m256i SumB = _mm256_setzero_si256();
+	__m256i SumC = _mm256_setzero_si256();
+	__m256i SumD = _mm256_setzero_si256();
+	
+	Count /= 32;
+	while(Count--)
+	{
+		SumA = _mm256_add_epi32(SumA, _mm256_loadu_si256((__m256i *)&Input[0]));
+		SumB = _mm256_add_epi32(SumB, _mm256_loadu_si256((__m256i *)&Input[8]));
+		SumC = _mm256_add_epi32(SumC, _mm256_loadu_si256((__m256i *)&Input[16]));
+		SumD = _mm256_add_epi32(SumD, _mm256_loadu_si256((__m256i *)&Input[24]));
+		
+		Input += 32;
+	}
+
+	__m256i SumAB = _mm256_add_epi32(SumA, SumB);
+	__m256i SumCD = _mm256_add_epi32(SumC, SumD);
+	__m256i Sum = _mm256_add_epi32(SumAB, SumCD);
+
+	Sum = _mm256_hadd_epi32(Sum, Sum);
+	Sum = _mm256_hadd_epi32(Sum, Sum);
+	__m256i SumS = _mm256_permute2x128_si256(Sum, Sum, 1 | (1 << 4));
+	Sum = _mm256_add_epi32(Sum, SumS);
+	
+	return _mm256_cvtsi256_si32(Sum);
+}
+Again, really no changes at all here to the scalar versions. These AVX loops are just direct conversions of the DualScalar, QuadScalar, and QuadScalarPtr loops.
+
+Let's see how fast these run, now that we're combining the techniques we learned from IPC with our new SIMD instructions:
+
+
+
+
+So again, QuadScalarPtr is the fastest version we were able to do without SIMD. That's again getting 1.9 adds per cycle. Then we have the SingleAVX version which comes in at 7.1 adds per cycle. Those were are two previous best routines, for scalar and SIMD respectively.
+
+Now we have the unrolled AVX versions. DualAVX shoots up to 9.4 adds per cycle! That's more than eight adds per cycle, so we can clearly see that the CPU is capable of executing more than one SIMD add per cycle. We can indeed boost the IPC of SIMD instructions just like we did for scalar instructions.
+
+QuadAVX is faster still. That’s up to 11.0 adds per cycle. And finally we've got QuadAVXPtr, which we’d expect to be the fastest, and it is: 13.4 adds per cycle. So you can see we're creeping up on 16 adds per clock, which would be the maximum if could do two whole AVX adds per cycle. We didn't quite get it, but we did manage to get 13.4, which is a massive speed improvement over the maximum of 2 that we saw in the scalar versions of these loops. And it's also another huge improvement over the 7.1 adds we got using SIMD alone, without trying to boost the IPC.
+
+So you really can see how these things combine together to give large speedups. Gains from IPC and SIMD are, in a lot of ways, independent of each other. We can both increase the amount of data parallelism we get by using SIMD — by saying let's operate on a bunch of values using just one instruction. At the same time, we can get more instruction parallelism by making sure that we don't have too much loop overhead, or too many instruction dependencies, so that the CPU can execute more than one instruction at the same time. When we combine those two, we get our biggest performance increase on this routine.
+
+If you think about how far we've come using the 2x gain from IPC and the 7x gain from SIMD, they basically stack. We ended up with 13.4x, which is just shy of directly multiplying together. And if you remember, we were only getting around 0.85 adds per cycle when we started. So we’ve gotten around 16x over the naive C loop!
+
+And that was from the C version, not the Python version. The Python version was over 100 times slower than the C version! So now I can point directly to these multipliers and say I wasn’t lying in the overview for the course. If we look at the speedup we got from the Python code, which was around 0.004375 adds/cycle, and we compare that to QuadAVXPtr at around 13.3856 adds/cycle , we get a total speed increase of over three thousand times.
+
+This is why I say these are not hypothetical numbers. Even in a loop like this, which is so simple that it seems impossible to imagine getting a 3000x speed improvement, it actually happens. There is such a huge gap between something like Python code and something like optimized x64 assembly, not only are massive speedups possible in almost every case, but also any little change — even to how you structure your Python code — might make a real, measurable difference in performance.
+
+So again, this is what performance-aware programming is about. It’s about realizing that there is a massive gap between typical modern code and the speed at which the CPU can actually complete the workload. This means that getting just a small percentage of the total improvement is still a massive speed increase. For example, getting just 10% of the improvement we got here would mean you made the code run three hundred times faster!
+
+Now that we know this, we can also go back to the Python code itself. Now that we know how big the gap is, and what a fast version of the routine looks like, we might be able to do a better job even in Python because we know what the goal is. If we didn't know that, we might not even realize that this was a part of the code we could speed up. We’d have no idea.
+
+But before we do go back and look at that Python code again, there's something else we need to talk about. During all of this we have been cheating a little bit. We haven't been cheating compared to the Python program, but I gave both the Python and the C program a kind of a “cheater's advantage”: I specifically set the size of the input array to be small enough that it gets very good cache behavior. The reason I did that was so that I could show you the very large performance gains that happen when you get good cache behavior.
+
+But what happens if you have bad cache behavior?
+
+That, of course, will be the subject of the next post.
+
+This is the fifth video in the Prologue of the Performance-Aware Programming series. It discusses one of five multipliers that cause programs to be slow. Please see the Table of Contents to quickly navigate through the rest of the course as it is updated weekly. A lightly-edited transcript of the video appears below.
+
+In all the previous videos, when we looked at performance, we were focused on trying to get as many adds per cycle as we could. The summation was the work we actually cared about, so it made sense to measure the routine specifically in terms of those adds.
+
+But as we saw when we looked at loop overhead, there are many other things the CPU has to do each time through the loop. To get the add done for the summation, it has to do loop maintenance overhead, like incrementing an index and comparing it to make sure we're not off the end of the loop. There was also a big part that we didn't talk much about, which was what I referred to as a “load”.
+
+Loads and stores, which are two different things that we'll talk about in great detail later in the class, are the ways CPUs get things from memory and put things back into memory. You can think of them as reading and writing. When we read from memory it's called a load. When we write to memory it's called a store.
+
+I mentioned loads in passing because they are an important part of this loop, but I didn't talk very much about how they might impact performance. Loads are actually very important to the performance of any piece of code and we will have to learn to analyze them in detail if we want to fully understand why our code runs the way it does. But right now what I'd like to do is just give you a little perspective on how much loads matter.
+
+Stores are also very important, of course, but it happens that our loop doesn't do any stores. So they’ll have to wait for later.
+
+When the CPU sees an instruction like the one we had written, where we add a value from memory into an accumulator, the CPU sees the memory access as a load.
+
+When we used the term dependent to describe the relationship between two adds, we said that if we had one add took as input the result of another add, that created a dependency between them. It creates a dependency because the input to one was the output of the other. The CPU can't proceed with the dependent instruction until it knows the result of the instruction on which it depends.
+
+The exact same thing happens with the add and its associated load:
+
+A diagram of two dependent adds. One of the adds is dependent on a load as well.
+
+
+When we want to do an add, if the thing we're trying to add into our accumulator isn’t in the CPU yet, that is a load and we have to wait until it’s done. This entire time we have been looking at the loop, there's actually been a hidden dependency on the load that we didn't talk about because I didn't want to focus on it until now.
+
+But it’s there. Every add is also dependent on its associated load. There's only one per add, because the accumulator is already in the CPU. It was just the output of the previous instruction. But every add has to have a load that pulls in the new value to accumulate.
+
+So the question then becomes, what determines how fast we can do these loads? If these loads are slow, it wouldn't matter how fast we could do the add instructions because just like our adds lined up behind each other when they were one big long dependency chain, each add would also line up behind its associated load, waiting for it to finish. That will slow the entire routine down.
+
+What determines how fast those loads are? Well, it's our fourth multiplier: caching.
+
+Caching is the idea that every time the CPU needs to pull a new piece of information in, we want that to happen as fast as possible, so it doesn’t delay everything else the CPU is doing. Data has to come from somewhere, and typically the main memory of the machine — those big sticks of RAM that you stick into a motherboard — is typically way too slow.
+
+DRAM simply isn’t as fast as the things inside the CPU. The adders on a modern CPU can do way more adds in a clock cycle than main memory can provide them with data to add. That's just the reality of the memory speed in a typical PC. This means that if we took the CPU we’ve been running on here, with the same add circuitry we've been looking at, with the same performance we had in all the examples, but all it had for storage was main memory, we would never have been able to achieve the adds per cycle that we saw.
+
+So how was the CPU performing so fast? It’s using caches to accelerate memory access.
+
+How does it work when the CPU has to access a new value? Well, first I should say how it accesses an old value. Where are the accumulators coming from, for example?
+
+In the part of the CPU closest to the part where it's actually doing all of its computations, there is a thing called a register file. The register file is small, temporary storage designed to feed values to instructions extremely quickly. In conjunction with a thing typically called a bypass, which feeds results of instructions directly into inputs for other instructions, the register file is designed to hold values currently being used by the instructions the CPU is looking at.
+
+The register file is very small. It can only hold a few hundred values at most. But when we talk about something like the accumulators in our add loop, that are being used over and over again by the loop, those are going to be in this register file.
+
+But the values from the array that our loop is adding together, those are not already in the register file. They are new values that come in every time through the loop. The CPU needs to load those values, and that’s where the cache comes in.
+
+When the CPU needs to load a value, it first looks to see whether it happens to be in a small, local piece of memory built directly into the core called the L1 — or level one — cache. This is not a physical stick of DRAM somewhere else on the motherboard, it’s transistors built directly into the CPU die itself.
+
+If the value we need is in this L1 cache, that’s the best case. The L1 returns the value to the CPU and we have successfully avoided going out to main memory to get the piece of data we needed.
+
+This happens very quickly. It can happen in something like three or four cycles on a modern CPU. It's very, very fast. And in addition to being fast, it also provides a lot of data per cycle. It might provide data at a rate of, say, 64 bytes per cycle.
+
+The L1 cache is very fast, and provides a lot of data. But the drawback is, it’s very small. On the chip I’ve been using for these examples, it’s only 32 kilobytes! Very, very fast but very, very small.
+
+So unfortunately, a lot of times the data we need is not in the small L1. So the next step is to check the next level of cache, the L2.
+
+This is the same idea as the L1: it’s built into the CPU itself, and designed to be very fast. But it’s not quite as fast as the L1. It takes longer to fetch data from the L2 — perhaps 14 cycles or more — and it typically can’t provide as much data per cycle as the L1. But the benefit of this slower cache is that it is bigger. On the chip I’m using, it’s 256 kilobytes — eight times the size of L1.
+
+On this chip, the pattern continues one more time, and there is an L3 cache as well. It’s much slower than the L1 and L2, taking something like 80 cycles to send data, and again, providing less bytes per cycle when it does. But just like the change from L1 to L2, the L3 is also much larger. On this chip, it’s 8 megabytes.
+
+That’s the end of the caching on this particular chip. There can be more levels of cache — you can have an L4 cache and so on. But on these chips, there are only three levels of cache, and then the next step is main memory. The main memory is slower than any of the cache levels, but is massive. I don’t even remember how big it is on this machine, but it’s something like 16 gigabytes —several orders of magnitude larger than all the caches put together.
+
+This pattern of fetching data from the closest available cache, and specifically how far out the CPU has to go to get the data it needed, determines the maximum speed that we can process data. No matter how aggressively we optimize our computations, we obviously can’t process data faster than it comes into the CPU.
+
+If we're working on data that mostly comes from L1, that’s going to be the fastest. If we're working on data that comes from the L2, that will be slower. L3? Slower still. And the slowest, of course, is main memory.
+
+As with everything else we’ve talked about, all the specifics depend on the specific CPU. It depends on the cache sizes and speeds, the organization of the data, what kind of RAM the main memory is, etc. There's a lot of things that determine the precise behavior, but in general it always has the same basic characteristic: when you load data, the speed of the load is proportional to how many levels the CPU had to go to get it.
+
+There's another thing that's worth mentioning here, and we'll talk about this in detail when we look at caching in detail: there’s a split that happens somewhere around L2 or L3. Sometimes it’s between the L1 and L2, and sometimes it’s between the L2 and the L3. On this chip I’ve been using, it’s between the L2 and the L3, but that is not always the case.
+
+The split is whether the caches are per core, or shared amongst cores.
+
+Modern CPUs are all multi-core. It's extremely rare to see a consumer CPU today that doesn’t have more than one core. They're typically four cores, eight cores — if you have a modern AMD chip you may even have 16 cores. Server chips can have even more than that. The typical core count seems to keep increasing!
+
+But no matter what the core count is on a CPU, there are parts of the CPU that are per core — meaning that every core has its own — and parts which are shared between two or more of the cores.
+
+L1 caches are generally per core. When I said the CPU I was using had 32k of L1 cache, I specifically meant that each core could cache 32k of data1 in its L1. Since this CPU actually has four cores, there is actually 128k of total L1 cache! It’s just that each core can only access its 32k of that cache.
+
+On this chip, the same is true of L2. Each core gets 256k of L2, so there’s actually 1mb of total L2. This is not true of all CPUs. Some CPU designs share the L2, so that all cores can access the entire set of L2 memory. Whether this helps or hurts performance depends a lot on the algorithm.
+
+L3, on the other hand, is almost always shared among some or all of the cores. On this chip, all 8mb of L3 are shared across all cores. So the 8mb is really just 8mb — total — and it is accessed by everyone.
+
+Understanding the cache layout of your target platforms is a big part of performance-aware programming. I mentioned at the end of the last video that we've been “cheating” so far. We're not really cheating — maybe that's a little bit harsh. But what I did when I set up these examples is I picked the number integers that we were adding to be small enough to fit in the L1 cache.
+
+Each integer is 4 bytes. I set the size of the input to 4096 integers. 4 times 4096 is 16k, about half the size of the L1 cache on this chip. So the workload should be able to fit entirely in the L1 cache.
+
+The reason I did that is because I wanted to show you the maximum speed up we could achieve for the loop. Now, I want to show you how poor cache behavior can take that speed away.
+
+The maximum possible performance we get is if we make sure all the data is coming from the L1. That is the peak performance. If I now force the same loop to operate over a larger array of integers, I can force it to work out of L2, L3, or even main memory.
+
+Let's see how much performance we lose when we do this. First, we’ll try to force our loop to run out of L2 instead of L1.
+
+If we run our fastest routine so far, QuadAVXPtr, on 4,096 integers, you see that we get the nice peak performance we saw last time:
+
+A screenshot showing QuadAVXPtr getting 13.213903 adds/clock
+
+
+If we want to push this out of L1 and into L2, all we have to do is change the number of integers it has to process so that they can't fit nicely in the L1 anymore. Let’s run it on 32,768 integers, so the total size of the array will be 128k. That will fit within the 256k of the L2 cache, but it's much too large to fit in the 32k of the L1:
+
+A screenshot showing QuadAVXPtr getting 7.708304 adds/clock on 32768 integers.
+
+
+As you can see, we get dropped from 13.2 down to 7.7 — for the exact same routine! The only difference was forcing it to work on a buffer size that could not fit in the L1.
+
+That's crazy, right? That's a massive hit to our performance just from pushing from L1 to L2. That's pretty brutal. But that's how sensitive this particular loop is to the rate at which values can be supplied. It makes sense, when you think about it, because we’re not doing very much work in the loop. An add is very simple, so the CPU just doesn’t have much work to do. It can churn through data very quickly when it’s just doing a simple addition. So there’s a tremendous amount of pressure on the loads to supply a lot of data. And in this case, the L2 simply can’t provide enough data per cycle to feed the adds.
+
+Let's keep going. What happens if we change from operating out of L2 to operating out of L3?
+
+The exact same procedure applies: we have to give it so many integers that they cannot fit in the 256k of the L2 cache. If we force it to process 262,144 integers, that will be 1mb of data, which will not fit in the L2 cache. It will fit comfortable in the 8mb of L3, however.
+
+How fast does it run now?
+
+
+
+
+Moving from L2 to L3 drops us down again, this time from 7.7 to 4.4. We've hit another significant performance cliff by forcing the CPU to operate mostly out of the L3 instead of the L2 or L1.
+
+We might as well complete the test now and see what happens if the dataset is so large, it has to stream from main memory. We’ll need to give it an array that’s significantly larger than 8mb. So let’s try 33,554,432 integers, which will be 128mb worth of data. There's no chance against it can fit that in the L3!
+
+When we run it now, we get drop from 4.4 all the way down to 1.4!
+
+If you remember, the naive C loop that we started with was getting around 0.8 adds per cycle. But by taking advantage of IPC and SIMD, we got that up to 13.4 adds per cycle. That was a huge improvement — 16x!
+
+Now, by forcing the same loop to operate from main memory, we reduced the performance all the way back down to less than twice the speed of the naive loop! And all we did was prevent the CPU from using its caches.
+
+As you can see, caching is a huge potential multiplier for performance because no matter what you do, you have to get your data from somewhere. As we’ll see later in the course, when you're not careful, the way you structure your computations and the patterns that you use to access your data could substantially reduce the amount of caching the CPU can do. In the worst case, this can slow down your programs by at least as much as bad IPC or lack of SIMD, sometimes even more than the two combined.
+
+But there’s still one more multiplier that we haven't talked about, and that multiplier, interestingly enough, can also help us with caching. It's the most difficult multiplier to get out of all of the ones we've talked about, but it has the potential to give us massive performance improvements if we work with it correctly. Not only can it improve performance on its own, but it can also improve caching, as we'll soon see.
+
+1
+We have not talked about how instructions get loaded into the core, but they, too, have to come from somewhere. While instructions typically come out of main memory, L3, and L2 caches the same way that data does, the L1 cache is often separate for data and for instructions. So when I say this chip has 32k of L1 cache for data, I am specifically talking about the data cache. There is a separate cache on this chip for instructions, which operates entirely separately.
+
+This is the sixth video in the Prologue of the Performance-Aware Programming series. It discusses one of five multipliers that cause programs to be slow. Please see the Table of Contents to quickly navigate through the rest of the course as it is updated weekly. A lightly-edited transcript of the video appears below.
+
+In all of the previous videos, we referred to the thing that was running our program as a “core” or a “CPU”, but we never really talked about what that means, or why there were apparently two terms for the same thing. Today we’re going to look more closely at the concept of “cores” and how they facilitate the final multiplier that causes programs to go much slower than they should: multithreading.
+
+Multithreading for performance is just the simple idea that if one computer can do something at a certain speed, two computers should be able to do it at a faster speed. Ideally, if we have two computers instead of one, it gets twice as fast. Could it get more than twice as fast? It seems unlikely at first glance, but, we’ll look more closely at that later.
+
+In the consumer space, this idea started off as simple as “two computers are faster than one”. If we put two separate physical CPU packages into a machine, then we can make a single physical computer that gains some or all of the performance that would normally require two physical computers. And it also becomes easier for the CPUs to communicate with each other, since they’re now connected directly rather than by a network cable or something similar.
+
+Today, since chip fabrication technology has gotten more and more advanced, CPU designers are able to pack dramatically more things on a chip than they used to. A single modern CPU package may contain multiple connected chips, and those chips might each contain multiple cores, each the equivalent of an entire CPU from early generations. The result is that it is highly unliky that any modern CPU has less than four complete cores on it, often more than four.
+
+So technology has advanced to the point where now any standard consumer computer is really several computers. Each of the many cores in a modern computer is capable of running its own instruction stream independently. If you write software that can’t take advantage of the increased performance offered by these multiple instruction streams, you give up a large performance multiplier.
+
+How large? That’s what we’re going to look at now.
+
+Cores provide parallelism, just like ILP and SIMD. But whereas ILP is about extracting parallelism from a instruction stream, and SIMD is about extracting parallelism from a data stream, multithreading is much more blunt. Rather than extract parallelism from a program, multithreading requires that the programmer create multiple instruction streams that the CPU runs separately on different cores.
+
+The multiple instruction streams may be incredibly similar. They may even be identical instructions but pointed at different parts of the data. Either way, they're still “different instruction streams” from the perspective of the CPU because each one will be processed separately by a different core.
+
+The way we increase performance by using multiple instruction streams is by breaking problems down into smaller pieces that can be processed separately. When we do this, we can take advantage of the proliferating number of cores in modern CPUs.
+
+Typically you expect to have four cores in a CPU nowadays at a minimum. A lot of modern CPUs have much higher core counts. You can see desktop processors with as many as 16 physical cores, and if you look at server CPUs, the numbers are dramatically higher. I think I saw AMD announce a CPU package that had 96 cores!
+
+These numbers are getting astronomical. If you think about running something on a server CPU with 96 cores, if you wrote that single-threaded, you're giving up 95 execution cores! You’d be using one percent of the total CPU power. So you can imagine how multithreading is another place where we get a large multiple in performance.
+
+Breaking workloads into multiple pieces so they can be executed across multiple cores can be very easy or very difficult depending on the nature of the workload. Much like we saw when improving IPC or using SIMD, operations that can occur in any order or be grouped arbitrarily are much easier to multithread than those which much be ordered or grouped in specific ways to get the right result.
+
+I picked our summation loop example specifically because it doesn't really take me any effort to explain how to break it apart for IPC, or SIMD, or multithreading. As I said before, if you have a loop where the only thing you're doing inside is a summing some integer input, we know that we can split it in any way we want.
+
+You already saw me to do things like break it apart into two sums that were happening at the same time, you saw me change it to wide, and in both cases we just combined the multiple sums at the end. One thing we did not do — because there was no reason to do it for the other things we were looking at — is just break the loop into multiple loops. If I want to do a summation from 0 to n, there's no reason I can't split that in half at n/2. I can do one loop over the first half, and another loop over the second half, and then just combine the two sums and get the correct result.
+
+So if I want to multithread this summation, that’s really all I have to do. If I have four cores in my CPU, and I want to use them all, I just have each core sum one quarter of the array, and then I add the four separate sums together. That’s it.
+
+Obviously multithreading is not so easy to achieve more broadly. Typically the person who designed whatever the thing is that you're trying to multithread didn't design it to be as separable as a summation. Like I said, I chose this problem very carefully. I picked a trivially separable problem for these examples so that we don’t have to spend a lot of time discussing the details in just the prologue. But as I have said in the previous videos, I do want to caveat this example by pointing out that it's rarely going to be this easy. This was specifically designed by me to make sure that in this overview, we didn't have to talk about all the other things that I'm we’re going to talk about later in the course.
+
+But that said, multithreading our summation loop is trivial.
+
+Now you may wonder why I keep saying “multithreading” when the thing that executes our instructions is called a “core”. Why is it called “multithreading” instead of “multicoring” or something like that?
+
+The reason is because cores are a physical concept. They exist in the physical CPU and they describe a particular thing that can be handed instructions to execute. Threads are actually an operating system concept. Threads are a thing you give the operating system with the expectation that the operating system assign them to a core.
+
+So when we do multicore programming in practice, we don’t talk to cores directly. Instead, we have to ask the operating system to create threads, which are our separate instruction streams, and then the operating system assigns those threads to the physical cores of the CPU. It’s a somewhat clumsy artifact of legacy OS design, but unless you’re doing embedded programming where you can deal with cores more directly, it’s what we have to work with.
+
+So let’s take a look at what happens if I create those threads with the operating system, and tell them to just run the exact same loop we had last time — QuadAVXPtr. We won’t change the loop at all, we’re just going to run that loop on multiple threads at the same time, and give each thread a portion of the array to sum. Then when they’re all done, we’ll combine the results and verify that we get the right answer.
+
+Here are the result we get if we take our QuadAVXPtr loop and put it into a test harness that can run it on multiple threads:
+
+
+
+
+On one thread we get exactly what we would expect — roughly the same thing we got for our maximum throughput in the single-threaded test harness. On two threads, we don’t quite get 2x, but it gets a large uplift over one thread. 22.6 adds per clock is by far the fastest we've ever seen. We never got anywhere close to 20 on one thread — the 13 to 14 range was the highest we were ever seeing. So that's already a major speed improvement.
+
+If we go to four threads, you can see it gets even faster. We go up to 35 adds per clock, which again is much faster than anything we've seen before. Unfortunately, it’s also quite a bit slower than 4x. If we took 13 adds per clock and multiplied by 4, we would expect to see 52x or something like that.
+
+So as you can see, splitting up our loop among multiple cores, much like SIMD, doesn't quite give us the entire speed up that we might expect from the number of cores. We got a 3x multiplier from 4 cores, so it wasn't bad. But it's also worth noting that this workload spread to 4 cores is getting very small per core.
+
+We started with only 4,096 integers. Our AVXQuadPtr does four sums on 8 integers each, so it’s processing 32 integers every iteration. So if we imagine four separate threads, each doing 1024 integers at 32 integers per iteration, that’s only 32 iterations of the loop for each core! The loop is barely getting started, and the workload is done.
+
+This does make it hard to really measure the peak speed of the loop, because the setup and cleanup of the loops and all that sort of stuff is no longer a trivial part of the workload. So we may also be understating the performance of the loop with this kind of measurement.
+
+An input of 4,096 integers is a “best case” for the single-threaded code because everything fit in the L1 cache. Looking at the measurements we just took, it might also be tempting to think that going to four cores means the maximum speedup would be 4x.
+
+Surprisingly, it depends a lot on what you’re comparing the multithreaded code to. In workloads that had some kind of a memory-bound component to them in the original single-threaded implementation, the number of cores may not be the upper bound on the performance gain.
+
+To see this in practice, let's look at what happens if we push the single-thread version out of its comfort zone. We can force it out of the L2 cache like we did in the last post by changing the workload size. This will also make it more advantageous for the multithreaded code because now the buffers will be bigger, so the overhead will be less of the total time.
+
+What happens then?
+
+Suppose we do 16,384 integers, which would be a 64k input buffer. This is larger than the L1 cache for a single core, so we expect the single core performance to drop to L2 speeds:
+
+
+
+
+And that is exactly what we see. Whereas with 4,096 integers it was getting the 13 adds per clock, with 16,384 the single-threaded QuadAVXPtr drops to 7 adds per clock.
+
+But look at what happens with our four-thread version! Not only is our four-thread version now performing where we thought it should at peak (around 4 times 13), but it also outperforms the single-thread version by dramatically more than 4x. It’s over 7x faster than the single-thread version at this workload size!
+
+What we’re seeing here is the effects of per-core caching. Because four threads get four separate L1 caches, each being 32k, if the total size of a workload is less than the combined size of those caches, a careful algorithm can have all cores operate out of their L1 cache. The single-thread version, which only has 32k, can't do that, so you end up with a multiple much bigger than the actual number of threads.
+
+What appeared to be a maximum increase wasn't a maximum at all. As this example makes clear, if the single-threaded version of a program is not structured well with respect to caching, multi-threading may reveal not only a performance multiplier for computation, but also a cache multiplier, since the size of the L1 and L2 caches has been effectively increased.
+
+So you may very well observe weird “super-multiple” things happening in multi-threaded code depending on how you orchestrate the algorithm, because you're not just looking at computation when you look at multi-threading, you're looking at computation combined with caching. The shape of workloads that you can efficiently process actually scales with the core count as well as the amount of computation you can do.
+
+Now of course we can still slow multi-threaded code down to a point where it's not getting a huge speed up. That's because one thing that usually doesn't change as dramatically with more cores is the amount of memory bandwidth per core.
+
+CPUs may be designed so that a single core can access a majority of the total memory bandwidth. If they are, then adding additional cores does give you access to more memory bandwidth, but not that much more. Other chips may be designed to be very balanced with respect to cores and bandwidth, and in those chips, adding additional cores may lead to significantly more total bandwidth. It all depends on the design of the CPU and memory system as a whole.
+
+Let's take a look at what happens on this particular CPU when we push the workload out of the caches entirely and force the multi-threaded algorithm to work entirely from main memory. What do we see then?
+
+Looking at the results here, what you can see is that with a single thread we're down around 1.4 adds per clock, which is what we would expect based on our tests in the previous post:
+
+
+
+
+With two threads, we do get a little more, and with four, even more. So we can get some increased memory bandwidth when we look at using more threads in the machine.
+
+But as you can see, best-case it’s not even 2x. The single core bandwidth is getting us 1.4 adds per cycle. The four core bandwidth is not even getting 3 adds per cycle. We were looking at a 7x multiple for multithreading when it was L1 cache bound, now we’re looking at less than 2x.
+
+Is it more memory bandwidth? Yes. Will we take it? Absolutely, because memory bandwidth is hard to come by. But as you can see it's nowhere near the dramatic difference that you see in the cache-bound case — though again, it’s important to keep in mind that these gains are very chip-dependent, so we may seem something quite different when we look at different CPUs. But in terms of this particular chip, as you can see there's not a lot of memory bandwidth headroom. A single core can get the lion’s share of the bandwidth on its own. No matter how many cores we use, we can’t even double the bandwidth.
+
+But the lower-level caches and computation power really do scale directly with cores. So in our case, where we can perfectly distribute the summation work, if we stay within the cache we really can get a speed up directly proportional to the number of cores.
+
+And we could keep going. If we used a machine with more cores, we could do 8x, 16x, etc. There really isn't anything in the summation loop that prevents us from scaling.
+
+In the more complicated workloads you will encounter in the real world, this is not so simple. You usually have to pay some cost against your scaling to do synchronization between the cores, or you roll up your sleeves and figure out ways to run things without synchronization. That often takes a lot of thought, but you'd be surprised how many times you can figure out a way to make something run parallel that seemed like it had to be serial.
+
+Of course there will always be some classes of workloads you might want to do that simply can’t be made truly parallel. And so no matter how hard you try, sometimes you simply won’t get that per-core scaling. Sometimes you can get it, sometimes you can't.
+
+But however much scaling you can get, it is certainly a significant multiple. Out of the multipliers we’ve seen, only multithreading really has the potential to be as high a multiple as waste. Unlike caching, where the CPU is getting better at caching your data automatically with each generation, failing to take advantage of multi-core execution means that you get relatively slower with each new generation.
+
+If you only use one core on a 4-core CPU, that’s a 4x slow-down multiplier. But the exact same code suffers as 16x slow-down multiplier when next year everyone switches to 16-core CPUs! So as core counts go up, your slow-down goes up with them if you don’t multithread your workloads.
+
+As I mentioned at the beginning, in the server world, 96 core machines already exist. And that’s on one physical socket. That’s not even counting if you were to use a dual socket machine to run multiple CPUs in the same machine. So if we stop talking about desktops, and start talking about servers, you could easily be facing another 100+ slow-down multiple just from not being multithreaded.
+
+That’s the same order of magnitude as the waste multiple in the Python program! So you could very plausibly make the argument that, for sever workloads, the slowdown you’d get from writing everything in Python is similar to the slowdown you get from being single-threaded. That’s how high core counts have gotten on the server side, and it shows no signs of slowing.
+
+This is very different from IPC or SIMD. Nobody is talking about executing 100+ instructions per clock. Nobody is adding 100+-wide SIMD units. So the multiples you get from IPC or SIMD, while important, are looking smaller and smaller as core counts go up, especially in servers.
+
+We've now gone through the five multipliers that account for the massive speed problems we have in modern software. These five multipliers are coefficients that make up the 1000x and 10,000x slowdowns we observe in practice.
+
+On Friday, I’ll be back to wrap up the prologue. I’ll summarize the five multipliers, and take another look at that Python code we started with. Then next week, we will move on to part one of the course proper, which is where we'll start doing homework.
+
+So hopefully I have convinced you that these multipliers are very important, so you’ll be motivated to do the homework and learn how to write code that avoids these huge performance drops.
+
+If I haven’t, well, I guess I get one more shot on Friday!
+
+This is the final video in the Prologue of the Performance-Aware Programming series. It summarizes the five performance multipliers from the previous videos, then explores how fast our original Python program can go now that we know what is necessary to make the summation loop run quickly. Please see the Table of Contents to quickly navigate through the rest of the course as it is updated weekly. A lightly-edited transcript of the video appears below.
+
+In the past five videos I showed a practical example of how we take some code from 0.006 adds per cycle to 52 adds per cycle. That's over 8,000 times faster. So when I said 1000x or 10,000x as being typical, I wasn’t exaggerating. This loop barely does anything at all, and this massive multiple was there nonetheless!
+
+Plus, I’m not a professional code optimizer. I do some optimization work, but it’s rare. So although I don’t know, I'm guessing that if somebody who did optimization for a living looked at our fastest C code, they may notice some things we could have done better. We haven’t done the difficult work of really scrutinizing the performance here, so we don't even know if this is the absolute maximum we could push this chip to.
+
+We do know it’s not the biggest multiple we might see for this loop more broadly, though. This chip is old. It has only four cores, and limited IPC compared to more modern chips. So the 8,000x we’re observing here is likely to be a modest gap compared to what we would see if we looked at some crazy server CPU!
+
+So hopefully this has demonstrated clearly that I’m not making up these orders of magnitude. They’re real, they exist, and they exist everywhere, no matter how simple the code appears to be.
+
+But my goal with this course is not to train you to go after all 8,000x, or however large that gap is on your target platform. My goal is to show you how that gulf is created by these multipliers, in detail, so you understand where the performance gap comes from. Usually, by just doing a small amount of extra work that doesn't require intense profiling and study and maxing things out, you will be able to hit some reasonable multiplier in the gap between nothing and 8,000x.
+
+That gap is so massive, you simply don’t need to spend the time to cross it entirely. It may not be worth your time to do all the work necessary to get the full speed-up, and the good news is, you don’t have to. Once you know what your options are, you can choose to go for 1,000x, or 100x, and still be getting massive speedups. That’s the silver lining of the pervasive, massive underperformance of modern software!
+
+So that's our goal — and remember at the opening I said there were two different things we can do to increase performance: A) we can reduce the number of instructions, and B) we can increase the speed at which the instructions move through the CPU. That's all we've got:
+
+
+
+
+Well that's all we did in the past five videos! That's all we really did. I showed you what the general categories are for hardware behavior that allow you to do reductions and increases. What were they?
+
+Number one was waste. That's obviously a reduction in instructions. By getting rid of waste we can reduce the total number of instructions the CPU has to execute, often by a very large factor.
+
+Number two was IPC (or equivalent, ILP). That's an increase in speed. We don’t change how many instructions we’re asking the CPU to do, but because we break dependency chains and give the CPU more instructions it can process at the same time, the CPU can execute our instructions faster.
+
+Number three was SIMD. That's another reduction. Instead of sending down eight add instructions, we send down one, and do all eight adds with just that one instruction. It’s just a straight-up reduction in the number of instructions we had to send down.
+
+Number four was caching. That’s an increase in speed. If our instructions are moving slowly through the CPU because they are waiting on data to arrive, caching can speed that up, and make the instructions complete more quickly.
+
+And number five was multithreading. That’s another increase. We aren’t reducing the number of instructions — in fact we may even be executing slightly more instructions — but by splitting those instructions up among multiple cores, we allow the CPU to process far more instructions at the same time, leading to an overall speed increase proportional to the number of cores. In a sense, it’s just like IPC. With IPC, we give one core multiple dependency chains to execute in parallel. With multithreading, we give each core its own set of dependency chains that can execute in parallel with the other cores.
+
+So we've got two reductions and three increases, and that's how we sped up our code:
+
+
+
+
+As I said at the outset of the prologue, knowing these things — the understanding of how these things work and how you can manage them to increase performance — is most of the battle.
+
+What you saw me do in the prologue was rewrite the entire thing in C. We went from having a Python loop to having completely custom C loop. And although I didn’t do much of it in the prologue, that was closer to real optimization than performance-aware programming.
+
+So why did I do it? Because that is what we are going to do in this course. We need to do some real optimization work to learn how each of these performance factors really come in to play, and how big of an effect each one has on different types of code.
+
+The act of doing that, and practicing that a few times, is the important part. Actually doing it for your production code is then optional. You might want to get that hands-on for some problems in your real work, or you might never need to. It will almost certainly be enough to let the knowledge of what the optimal code would be guide your decisions are the high level, so that you always get your 100x speedup for very little work. You don’t need to go for the full 1000x, or the full 10,000x, if it’s not worth it. But the small amount of work necessary for 100x almost always is.
+
+So we need to learn by the end of the course is that skill specifically. The skill of knowing roughly what a high-performance assembly language version of your routines would be if you spent the time to do them, so that you know how to architect your code to make that possible. It doesn't really matter what language you program in, you can then use whatever facilities exist in that language to ensure that the performance-critical parts of the code are set up properly. This will allow things like optimizing compilers or auto-vectorizers to automatically make your code faster, or in the cases where they can’t, you will be able to quickly and easily replace a small portion of your code with a faster version, because your previous architectural decisions didn’t preclude that possibility.
+
+So let's try to prove that what I’m saying is actually true. Let’s avoid multithreading for now, because just the part about how we might measure multithreading performance in Python is kind of another can of worms. But just sticking with single-threaded code, now that we know we can get around 13 adds per cycle in C, what can we do with our 0.006 adds per cycle Python code? Can we use our knowledge about what should be happening at the CPU level to drive Python toward a more optimal version of the loop? We’ve got a 2000x gap between those two numbers, so we know there are massive gains to be had. Surely we can get some of them without having to switch to a completely C workflow, right?
+
+Let’s go all the way back to our original listing four from the post on Waste:
+
+# ========================================================================
+# LISTING 4
+# ========================================================================
+
+def SingleScalar(Count, Input):
+    Sum = 0
+    for Index in range(0, Count):
+        Sum += Input[Index]
+    return Sum    
+This is the SingleScalar loop in Python. Before I go into thinking about how we might speed this up, I wanted to include listing sixteen, which I actually didn't have when I wrote this stuff:
+
+# ========================================================================
+# LISTING 16
+# ========================================================================
+
+def SingleScalarNoRange(Count, Input):
+    Sum = 0
+    for Value in Input:
+        Sum += Value
+    return Sum
+I inserted this new listing after-the-fact! When I posted Waste, one of the people taking the course pointed out that we could probably improve the performance of this routine already by not using the “range” construct. With that construct, Python is probably going to do something like actually construct the range as an array, wasting a bunch of instructions. So the suggestion was, if you use the “for-in” syntax, maybe it would avoid constructing that range in the first place.
+
+I thought this was a great observation, so I wanted to include it in the running. It’s awesome that someone was already thinking about that before we had even started the course.
+
+That said, let's talk about going a little bit further. When we stepped through the Python interpreter, we saw what was going on in there. All of that waste per operation means that above all, we want to minimize how many actual pieces of work we do directly in Python code.
+
+So when we look back at SingleScalar, we can see right away that us looping over the entire array in Python is never going to be fast. What we need to do is find a way to get some piece already compiled code, that's not running through the interpreter, to do this summation for us.
+
+What I've written in listing seventeen and eighteen are two possible ways that you can do this in Python:
+
+# ========================================================================
+# LISTING 17
+# ========================================================================
+
+import numpy
+def NumpySum(Count, Input):
+    return numpy.sum(Input)
+# ========================================================================
+# LISTING 18
+# ========================================================================
+
+def BuiltinSum(Count, Input):
+    return sum(Input)
+Now, remember —I'm not a Python programmer. I don't program Python. Ever. The code for this course is the total amount of Python code that I've ever written in my entire life! I'm approaching this solely as someone who knows how things should be running under the hood, but I have no special knowledge otherwise. I'm just doing exactly what I said you will be able to do once you learn the material from the rest of this course: letting my knowledge of code performance guide me through improving things at a high level.
+
+So these two listings are examples of summations in Python that do not require us to loop over the values in Python. In the first one, we ask the “numpy” package to do it, and in the second one, we ask the Python interpreter to use a built-in summation function.
+
+Now until we test it, I don't know if these summations will actually be faster. I haven’t gone and looked at the source code for numpy or for the Python interpreter’s “sum” built-in. But I’m just experimenting with things that should give Python more ability to run fast paths on this summation.
+
+Let's see what happens if we actually time all these. I’m going to use a slightly modified version of the Python test harness. It’s essentially the same as the one from Waste, but because we’re starting to look more closely at Python performance now, I felt like it was OK to move away from vanilla Python to get more accurate results. So I wrote my own little RDTSC function that gets the real CPU time stamp counter value, which means we don’t have to manually provide a CPU speed, and we can ensure that we are comparing apples to apples with the C version because they’re now both using the exact same timer on the exact same machine.
+
+Here are the results:
+
+
+
+
+Our SingleScalar routine is, of course, running at 0.006 adds per cycle as we expect. SingleScalarNoRange — the routine suggested by a reader — does improve the performance. It's not a massive improvement, but it is significant. If you didn't have any other options, going from 0.006 to 0.008 would be great, right? You'd be very happy about that.
+
+Perhaps more surprisingly, it beats numpy. I would assume the reader was not expecting that outcome! I certainly wasn’t. But there it is. For this particular situation, the range-less for loop beats numpy.
+
+But the real surprise is that Python’s built-in summation, which is presumably not supposed to be as performance-critical as something like numpy, roundly beats all the other routines. It is able to go nearly ten times faster than anybody else, and that remains true through all the different buffer sizes.
+
+OK. We tried to eliminate some of that Python interpreter waste by avoiding iteration in Python, and instead having Python do the iteration internally somehow. We saw how much overhead the Python interpreter introduces, so we would expect more like a 100x speedup from this, yet all we got was 10x. That’s still fantastic — running ten times faster is still a massive speed increase. But when we know we we losing 100x or more from waste, it seems like we should be able to do better than that.
+
+If we think back to what we saw when we stepped through the Python interpreter code, we may recall that a lot of the work it seemed to be doing was deducing what types of values it was working with. This makes sense, because Python is a dynamically typed language, and things like arrays in Python can hold anything. So when we ask for the Python sum function or the numpy sum function to sum up an array, yes, it can save the loop iteration overhead. But it can’t save that type management overhead.
+
+Again, I'm not a Python programmer. I am trying to practice exactly what I preach here. I'm saying I know how to do the fast version and I don't know anything about how to make it go fast in Python. That's a real genuine statement that 100% applied to me when I sat down to try this. All I knew was how the fast version should go.
+
+So I'm just thinking in my head, I got rid of the iteration overhead, is there some way I can get rid of the type determination overhead? I know that's going to be very wasteful. Our C code knew exactly what type everything was, so it didn’t have to waste any time on that. Can I give the Python code that same advantage? Does Python have a way for me to make an array which can only contain 32-bit integers?
+
+As luck would have it, Python actually does have a way to create an array with values in it that are required to be of a specific type. It is possible to tell Python I want effectively the same thing that I have in C. You do this with a “type code” on the built-in array type:
+
+
+
+
+If you create an array with a type code of ‘L’, Python claims it will create an array of 4-byte unsigned integers — exactly what we want!
+
+This means we can now create an array that we should be able to hand to sum or numpy.sum. If either of those has a fast path for known-integer arrays, they should be able to speed up their summation dramatically.
+
+If we run all the exact same routines again — no change to the code at all, just changing the inputs to be L-labeled arrays — let's see what we get:
+
+
+
+
+Right off the bat you can see that the SingleScalar and SingleScalarNoRange loops have gotten somehow slower. Not much, but still.
+
+And for whatever reason, the Python interpreter’s sum function also got slower! It certainly didn’t have to be, but, there must be some oddity to the code such that it struggles more with typed arrays. Perhaps they are less common, so nobody really tested that path? We would have to go look at the source code to know for sure.
+
+But the good news is, numpy behaved exactly as we hoped. Now that we are handing it an array where it knows all the elements are the same type, it gets a massive speed increase. It's now by far the fastest in its category, but also just reasonably fast in general.
+
+While it still seems to struggle on the smaller buffer sizes — it’s way slower than C on the L1-sized workload, for example — with the largest buffer size it’s only around 4x off from the C version! That’s a massive improvement, and well within an acceptable range if we’re just trying to make this run reasonably, not worrying about maxing out the CPU.
+
+This is great. Just changing the way the data was typed was enough to get us a huge speed win here. We didn't change anything about the actual code at all! All we did was change the declaration of something that we passed in.
+
+We started with a 2000x gap, and we’ve pulled within 4x on large buffers. We’re still 100x off on small buffers, but that’s still way better than 2000x — and to get that massive speed increase, we barely had to do any work! We just had to know that we could get the speed, and then spend a few minutes using our knowledge of the fast version to guess at what would help Python get there.
+
+So that’s totally good enough for performance-aware programming. We could stop there, and be happy. But a totally legitimate question would be, what if we really needed the remaining performance? Or what if, on a different kind of problem, no amount of fiddling with the Python is going to get us within an acceptable performance range? Would that just be it? Would there be nothing more we could do?
+
+Well, Python is one of the most popular programming languages in the world. Many people have encountered the same kinds of problems we’re facing here, and have tried to address the problem in one way or another. So are already exist many options for getting more serious about performance without abandoning your Python codebase entirely.
+
+From the available options, for this task I chose to go with Cython. The reason I chose it was because it dovetails nicely with how this course works, and how I work in general: when I’m trying to write fast code, I tend to write C and look at the assembly language it generates, taking lots of measurements and working my way toward what I think is an optimal loop. So Cython seemed like the natural choice to use for performance programming in Python, because it’s a module that lets you basically drop C code into Python wherever you want.
+
+It really is almost that simple. Instead of having to leave your Python workflow, create a C project, learn how to use all the C tools and the compiler and all that stuff — you can just forget all that and use Cython to do it for you. If you're a Python programmer and you learn just enough C to make critical loops, you can actually just go ahead and use Cython to drop those loops into your Python program in place of any native Python routine that is too slow.
+
+This is all I had to add to my Python code:
+
+import pyximport
+pyximport.install()
+import cython_sum
+The “cython_sum” import says “go get a cython_sum.pyx file, compile it using hybrid Python/C syntax, and let me call functions in it whenever I want”. Using this method, we can rewrite any Python loop we want in cython_sum.pyx and then call it from our native Python code, avoiding the Python interpreter overhead and giving us back control over the low-level behavior of the performance-critical parts.
+
+That's really all there is to the workflow. There was nothing else that I had to do.
+
+Here is listing nineteen, which is the Cython code I wrote to replace the summation loop:
+
+# ========================================================================
+# LISTING 19
+# ========================================================================
+
+def CythonSum(unsigned int TotalCount, array.array InputArray):
+    cdef unsigned int Count
+    cdef unsigned int *Input
+    cdef __m256i SumA, SumB, SumC, SumD
+    cdef __m256i SumAB, SumCD
+    cdef __m256i Sum, SumS
+    
+    Input = InputArray.data.as_uints
+
+    SumA = _mm256_setzero_si256()
+    SumB = _mm256_setzero_si256()
+    SumC = _mm256_setzero_si256()
+    SumD = _mm256_setzero_si256()
+
+    Count = TotalCount >> 5
+    while Count != 0:
+        SumA = _mm256_add_epi32(SumA, _mm256_loadu_si256(<__m256i *>&Input[0]))
+        SumB = _mm256_add_epi32(SumB, _mm256_loadu_si256(<__m256i *>&Input[8]))
+        SumC = _mm256_add_epi32(SumC, _mm256_loadu_si256(<__m256i *>&Input[16]))
+        SumD = _mm256_add_epi32(SumD, _mm256_loadu_si256(<__m256i *>&Input[24]))
+
+        Input += 32
+        Count -= 1
+        
+    SumAB = _mm256_add_epi32(SumA, SumB)
+    SumCD = _mm256_add_epi32(SumC, SumD)
+    Sum = _mm256_add_epi32(SumAB, SumCD)
+
+    Sum = _mm256_hadd_epi32(Sum, Sum)
+    Sum = _mm256_hadd_epi32(Sum, Sum)
+    SumS = _mm256_permute2x128_si256(Sum, Sum, 1 | (1 << 4))
+    Sum = _mm256_add_epi32(Sum, SumS)
+
+    return _mm256_cvtsi256_si32(Sum)
+Does this look familiar? Other than the fact that the function prototype is now partially Python syntax, hopefully you will recognize the rest of the function. It is almost verbatim a cut-and-paste of listing fifteen, our QuadAVRPtr routine:
+
+/* ========================================================================
+   LISTING 15
+   ======================================================================== */
+
+typedef unsigned int u32;
+u32 __attribute__((target("avx2"))) QuadAVXPtr(u32 Count, u32 *Input)
+{
+	__m256i SumA = _mm256_setzero_si256();
+	__m256i SumB = _mm256_setzero_si256();
+	__m256i SumC = _mm256_setzero_si256();
+	__m256i SumD = _mm256_setzero_si256();
+	
+	Count /= 32;
+	while(Count--)
+	{
+		SumA = _mm256_add_epi32(SumA, _mm256_loadu_si256((__m256i *)&Input[0]));
+		SumB = _mm256_add_epi32(SumB, _mm256_loadu_si256((__m256i *)&Input[8]));
+		SumC = _mm256_add_epi32(SumC, _mm256_loadu_si256((__m256i *)&Input[16]));
+		SumD = _mm256_add_epi32(SumD, _mm256_loadu_si256((__m256i *)&Input[24]));
+		
+		Input += 32;
+	}
+
+	__m256i SumAB = _mm256_add_epi32(SumA, SumB);
+	__m256i SumCD = _mm256_add_epi32(SumC, SumD);
+	__m256i Sum = _mm256_add_epi32(SumAB, SumCD);
+
+	Sum = _mm256_hadd_epi32(Sum, Sum);
+	Sum = _mm256_hadd_epi32(Sum, Sum);
+	__m256i SumS = _mm256_permute2x128_si256(Sum, Sum, 1 | (1 << 4));
+	Sum = _mm256_add_epi32(Sum, SumS);
+	
+	return _mm256_cvtsi256_si32(Sum);
+}
+It required very few modifications to drop in. All I had to do was move the types to the top in “cdef” lines, change casts to use <> instead of (), and replace an integer division1. Otherwise, the code is identical.
+
+So that's it. That's all I had to do. If I know how to write the fast C version, I don’t even have to relearn anything, I can drop it straight into my Python program and call it.
+
+How fast does that run in practice? Let’s give it a shot:
+
+
+
+
+CythonSum is vastly outperforming our previous best, NumpySum. It’s 4x faster on NumpySum’s best case (the large buffer), and it destroys NumpySum on the smaller buffer sizes — it’s 40x faster on the L1-sized buffer!
+
+However, CythonSum is still a bit slower than C, unfortunately. On the biggest buffer size, it's basically running at the same speed as C. But on the L2-sized buffer it’s not so good, and on the L1-sized buffer it’s actually 3x away.
+
+That pattern tells me something. When you increase buffer size and your code gets faster, it usually means that something you're measuring is constant overhead — it doesn’t scale with the number of elements, it’s just some general cost for running the code at all.
+
+Knowing that this is effectively a Python to C bridge, where we have to call out to compiled C code, we can already suspect that something about that bridge accounts for the overhead. One of the nice things about Cython is it generates a readable C file of the code it’s going to compile. If we look through that file, we can see what kind of overhead is actually involved.
+
+When I did this, I found that Cython actually generates two functions for our CythonSum. One is a very reasonable C version of what we asked for, and it should compile fairly cleanly. The other is a wrapper that is actually called first, which does some Python bookkeeping on the way in and the way out. Even without profiling, we can bet this is where the difference between our Cython and C loops is coming from.
+
+So again, we can stop there if we want. We’ve gotten plenty of speed, and the overhead isn’t unreasonable. It doesn’t even show up on larger buffer sizes, so it’s only a problem on smaller sizes.
+
+But what if we just want to check to see how fast the routine really is? While we do have to pay the overhead of the Python to C bridge, we only have to pay it once on the way in and once on the way out. So we could remove even that overhead by staying in Cython longer.
+
+For more complex problems, that might be something we want to do. If this summation were part of a larger series of operations, maybe we just stay in Cython for several parts of the problem, avoiding that overhead.
+
+So I’m curious. If we were to take the overhead out, how fast would CythonSum run?
+
+To measure this, I wrote CythonSumC, which is the exact same function as CythonSum, but declared in Cython as not being callable from Python. This way Cython won’t generate a wrapper for it:
+
+# ========================================================================
+# LISTING 20
+# ========================================================================
+
+cdef unsigned int CythonSumC(unsigned int TotalCount, unsigned int *Input):
+    cdef unsigned int Count
+    cdef __m256i SumA, SumB, SumC, SumD
+    cdef __m256i SumAB, SumCD
+    cdef __m256i Sum, SumS
+
+    Count = TotalCount >> 5
+
+    SumA = _mm256_setzero_si256()
+    SumB = _mm256_setzero_si256()
+    SumC = _mm256_setzero_si256()
+    SumD = _mm256_setzero_si256()
+    while Count != 0:
+        SumA = _mm256_add_epi32(SumA, _mm256_loadu_si256(<__m256i *>&Input[0]));
+        SumB = _mm256_add_epi32(SumB, _mm256_loadu_si256(<__m256i *>&Input[8]));
+        SumC = _mm256_add_epi32(SumC, _mm256_loadu_si256(<__m256i *>&Input[16]));
+        SumD = _mm256_add_epi32(SumD, _mm256_loadu_si256(<__m256i *>&Input[24]));
+
+        Input += 32
+        Count -= 1
+        
+    SumAB = _mm256_add_epi32(SumA, SumB)
+    SumCD = _mm256_add_epi32(SumC, SumD)
+    Sum = _mm256_add_epi32(SumAB, SumCD)
+
+    Sum = _mm256_hadd_epi32(Sum, Sum)
+    Sum = _mm256_hadd_epi32(Sum, Sum)
+    SumS = _mm256_permute2x128_si256(Sum, Sum, 1 | (1 << 4))
+    Sum = _mm256_add_epi32(Sum, SumS)
+
+    return _mm256_cvtsi256_si32(Sum)
+Then, I duplicated the testing harness in Cython proper, so it can time itself without having to round-trip through Python.
+
+What do we get if we run the test now?
+
+
+
+
+Perfect! The CythonSumC version now runs very close to the optimal C version that we had before. It's within just a few percent of the one we built completely in C using an exclusively C tool chain. So other than the cost of getting into and out of Cython, it basically gives us the ability to fix anything we want to fix about Python performance without needing to rewrite the whole program, and without even leaving a Python workflow!
+
+So the final answer to how fast our Python program can go relative to our C program is actually: as fast as we want it to.
+
+With just one additional module, our Python program can go all the way up to the same performance as a regular stand-alone C program because people have already built into Python the ability to quickly shunt to C when necessary for exactly this purpose.
+
+Using C to solve performance problems is something people probably overlook because of how much practice and study it would take for them to go from Python programmer to writing all their code in C. Not only would that be a huge effort on the programmer’s part if they’ve never programmed C before, but it also might be prohibitively expensive on an existing codebase. A team might have millions of lines of code built up in Python or some other language, and if the only answer to performance problems is “rewrite the whole thing in C”, that’s obviously not feasible.
+
+But here we can see there’s a more achievable option. If we learn just enough C — just enough to write performant loops — we don’t have to learn about C architecture, all the weird C++ stuff with templates and lambdas and all that. We just need to study enough C to be able to create small pieces of code that can replace your Python hotspots, and then we can use existing extensions to drop them right in while changing very little else.
+
+Is that going to be as good as the super-optimized version that a professional optimizer could write? Probably not. But it doesn’t need to be. In this case, for example, it’s 2000x times faster than the naive Python loop we started with, and all we had to do was drop in a dozen lines of C code into Cython.
+
+And I swear when I sat down to do this, it was only a few hours of work and I had never done any Python before. I knew nothing about Python. So I wasn’t using some secret knowledge or Python tricks or decades of experience in how to make Python run fast.
+
+What I was using is the knowledge of how the CPU works. Because I knew that, I was able to efficiently try things to get the Python code to run much faster on its own, and also to find a way to write performant loops in the Python workflow.
+
+The crucial thing — and what we will spend the rest of this course doing — is learning what's the fast could would be. Once you know that, you will be surprised at how many ways there are for you to take code that you thought was in a higher level language and never going to be fast enough, and find all these options for improving the speed. Will you always be able to get up to the C speed? Some languages don't have as easy a path as Python, so maybe not all the way to the C speed. But will you be always be able to cross a significant portion of that 1000x to 10,000x performance gap? Absolutely.
+
+So that's the course. That is what we will spend the next few months doing.
+
+I didn't expect you to understand any of the details of these things when we went over them here in the prologue. I just wanted to give you the broad strokes, and to show the simplest possible example of how it all really does matter. Each of the five multipliers has tons of details behind it, and for the rest of the course we're going to fill all those details in. Unlike what I did here in the prologue, where everything was just summations and simple explanations, from now on we're going to dive in all the way.
+
+We'll learn a model of the CPU. We'll start slow with a very simple model, and we’ll expand it until we have a solid understanding of how modern CPUs really work. And when we’re done, you’ll have the knowledge that you need to be aware of how the code you write in any language translates into instruction streams, and what determines how fast the CPU can process those streams.
+
+That's the course. We’ll get started next week.
+
+1
+Because I could not immediately see how to convince Cython to do a regular integer divide instead of a Python-style double divide, so I just used a shift instead, since it does the same thing for any power of two.
+
+
+
+
+
