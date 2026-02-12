@@ -1,4 +1,4 @@
-// run like this: g++ decode.cpp -o decode
+// run like this: g++ single_instruct.cpp -o single
 
 #include <fcntl.h> //file control/open constants and declarations
 #include <string>
@@ -126,7 +126,7 @@ int main() {
   // Now and that with 0b111, to only keep the reg bits
   unsigned char onlyReg = regLow & 0b111;
   // get 2nd register name
-  unsigned char rmRegister = second & 0b11;
+  unsigned char rmRegister = second & 0b111; // 3 bits not 2 :)
   std::string secondReg= getRegisterName(rmRegister, isWord);
   std::string dest;
   std::string src;
