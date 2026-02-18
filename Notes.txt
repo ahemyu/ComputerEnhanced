@@ -1,0 +1,9 @@
+Part 1 - Reading ASM
+
+1. Discussed how to decode a mov (reg to reg) instruction in 8086 intel assembler language; HW was to write a decoder that gets binaries of reg to reg commands in and prints the asm instructions.
+2. This Lecture is about decoding multiple instructions with suffixes etc;
+  - cpu often needs to look at 1st byte to know if more bytes are attached to the current instruction(or to the 2nd, 3rd ...).
+  - effective adress: Instead of getting smth from memory at some specified address n, add n to a known address of a register (e.g. bx + n)
+  - best way to test solution from homework is to disassemble and asssemble solution and then compare the binary outputs between given input file and own created
+  - Notes on the homework:
+      -
