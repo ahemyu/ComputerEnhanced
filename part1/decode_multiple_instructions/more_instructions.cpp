@@ -1,5 +1,5 @@
 
-// run like this: g++ single_instruct.cpp -o single
+// run like this: g++ more_instructions.cpp -o multi_iso
 
 #include <fcntl.h> //file control/open constants and declarations
 #include <string>
@@ -93,6 +93,7 @@ std::string getRegisterName(unsigned char regBits, unsigned char isWord ){
 
 void regMemToRegMem(char* buf, int index){
     
+  printf("REG TO MEM \n");
   
 }
 int immediateToReg(char* buf, int index){
@@ -109,7 +110,7 @@ int immediateToReg(char* buf, int index){
   if(word){
     // we need to read in two bytes, so shift the second byte left by 8 bits and then OR with the first byte
     numberofBytes = 3;
-    val = static_cast<unsigned int>(buf[index+2]) | buf[index + 1];
+    val = static_cast<unsigned int>(buf[index+2] << 8) | buf[index + 1];
   }else{
     numberofBytes = 2;
     val = static_cast<unsigned int>(buf[index+1]);
