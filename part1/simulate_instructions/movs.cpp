@@ -4,7 +4,6 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstdio>
-#include "string"
 
 typedef char unsigned u8;
 typedef short unsigned u16;
@@ -25,7 +24,6 @@ typedef long long s64;
 // - 6 si
 // - 7 di
 s32 registers[8] = {0,0,0,0,0,0,0,0};
-char const* regNames[8] = {"ax", "bx", "cx", "dx", "sp", "bp", "si","di"};
 void exec_mov(instruction instr){
   // simulate instruction and print all of the registers current values
   instruction_operand dest = instr.Operands[0];
@@ -53,7 +51,12 @@ void print_reg_contents(){
   // go through all regs and print their values
   printf("Final Registers:        \n");
   for (u8 i = 0; i<=7;i++){
-    printf("%s: %d \n", regNames[i], registers[i]);
+    // we know the index-regName mapping so just use that and the provided function to get register name
+    register_access reg = {};
+    reg.Index = i + 1;
+    reg.Offset = 0;
+    reg.Count = 2;
+    printf("%s: %d \n", Sim86_RegisterNameFromOperand(&reg), registers[i]);
   }
 }
 
