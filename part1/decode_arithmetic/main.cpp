@@ -1,6 +1,5 @@
 
-// run like this: g++ more_instructions.cpp -o multi_iso
-
+// run like this: g++ main.cpp -o main
 #include <fcntl.h> //file control/open constants and declarations
 #include <string>
 #include <unistd.h> // brings POSIX syscall declarations like read, write, close
@@ -16,6 +15,8 @@ std::string getMvOperation(unsigned char op){ //highest 4bits of first byte
 
   }else if(op == 0b1011){
     return "immediate_to_reg";
+  }else if(op == 0b000000){
+    return "r/m_with_reg_to_either";
   }
   return "opcode not supported yet";
 }
@@ -181,7 +182,6 @@ int regMemToRegMem(char* buf, int index){
       }else{
         displacement = (static_cast<uint8_t>(static_cast<unsigned char>(buf[index+3])) << 8) |
                                    static_cast<uint8_t>(static_cast<unsigned char>(buf[index + 2]));
-        // displacement = static_cast<int16_t>(rawDisplacement);
         bytes = 4;
       }
       if (displacement > 0){
@@ -225,6 +225,21 @@ int immediateToReg(char* buf, int index){
   printf("mv %s, %d\n", reg.c_str(), val);
 
   return numberofBytes;
+}
+
+int add(char* buf, size_t index){
+  
+  return 0;
+}
+
+int sub(char* buf, size_t index){
+  
+  return 0;
+}
+
+int cmp(char* buf, size_t index){
+  
+  return 0;
 }
 
 

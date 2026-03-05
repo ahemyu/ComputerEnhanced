@@ -6,4 +6,10 @@ Part 1 - Reading ASM
   - effective adress: Instead of getting smth from memory at some specified address n, add n to a known address of a register (e.g. bx + n)
   - best way to test solution from homework is to disassemble and asssemble solution and then compare the binary outputs between given input file and own created
   - Notes on the homework:
-      -
+      - when you store a char array which contains hex values of bit instructions, make sure to use unsigned/signed when appropriate when READING the data out of the array
+      - a decoder is mainly occupied by reading out bits, lookup in tables what they mean and either just map it to smth or to get the next the bytes of the current instruction etc
+3. Opcode Patterns in 8086 Arithmetic
+  - hw will be to decode add, sub and cmp
+  - hw: 
+    -
+    
