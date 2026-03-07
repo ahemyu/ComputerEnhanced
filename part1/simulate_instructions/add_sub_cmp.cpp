@@ -23,17 +23,23 @@ typedef long long s64;
 // - 5 bp
 // - 6 si
 // - 7 di
-s32 registers[8] = {0,0,0,0,0,0,0,0};
+s16 registers[8] = {0,0,0,0,0,0,0,0};
 
 u8 S = 0; //signed flag
 u8 Z = 0; //zero flag
 
-void print_instruction(operation_type op_type,  register_access* dest,  register_access* src){
+void print_instruction(operation_type op_type,  register_access* dest,  instruction_operand* src){
   const char* op_mem = Sim86_MnemonicFromOperationType(op_type);
   const char* dest_mem = Sim86_RegisterNameFromOperand(dest);
-  const char* src_mem = Sim86_RegisterNameFromOperand(src);
+  switch(src->Type){
+    case(Operand_Immediate):
+      printf("%s %s, %d\n", op_mem, dest_mem, src->Immediate.Value);
+    break;
+    case(Operand_Register):
+    const char* src_mem = Sim86_RegisterNameFromOperand(&src->Register);
+    printf("%s %s, %s\n", op_mem, dest_mem, src_mem);
+  }
 
-  printf("%s %s, %s\n", op_mem, dest_mem, src_mem);
 
 }
 
@@ -59,7 +65,7 @@ void exec_mov(instruction instr){
       registers[destIndex - 1] = registers[src.Register.Index - 1];
       break;
   }
-  print_instruction(Op_mov, &dest.Register, &src.Register);
+  print_instruction(Op_mov, &dest.Register, &src);
 }
 
 
@@ -82,7 +88,19 @@ void exec_add(instruction instr){
       registers[destIndex - 1] += registers[src.Register.Index - 1];
       break;
   }
-  print_instruction(Op_add, &dest.Register, &src.Register);
+  // set the flags
+    if (registers[destIndex - 1] == 0b0){
+      Z = 1;
+    }else{
+    Z = 0;
+  }
+    if((registers[destIndex - 1]) >> 15) {
+      //if highest bit is set, set sign flag
+      S = 1;
+    }else{
+    S = 0;
+  }
+  print_instruction(Op_add, &dest.Register, &src);
 }
 
 void exec_sub(instruction instr){
@@ -103,11 +121,55 @@ void exec_sub(instruction instr){
       registers[destIndex - 1] -= registers[src.Register.Index - 1];
       break;
   }
-  print_instruction(Op_sub, &dest.Register, &src.Register);
+    if (registers[destIndex - 1] == 0b0){
+      Z = 1;
+    }else{
+    Z = 0;
+  }
+    if((registers[destIndex - 1]) >> 15) {
+      //if highest bit is set, set sign flag
+      S = 1;
+    }else{
+    S = 0;
+  }
+
+  print_instruction(Op_sub, &dest.Register, &src);
 }
 
 
 void exec_cmp(instruction instr){
+
+
+  instruction_operand dest = instr.Operands[0];
+  instruction_operand src = instr.Operands[1];
+  // get the address of the dest register we want to write into
+  u32 destIndex = dest.Register.Index;
+  s32 tmp;
+
+  switch(src.Type){
+    case(Operand_None):
+      break;
+    case(Operand_Immediate):
+      // just write the value the dest index
+      tmp = registers[destIndex - 1] - src.Immediate.Value;
+      break;
+    case(Operand_Register):
+      tmp = registers[destIndex - 1] - registers[src.Register.Index - 1];
+      break;
+  }
+    if (tmp == 0b0){
+      Z = 1;
+    }else{
+    Z = 0;
+    }
+    if(tmp >> 15) {
+      //if highest bit is set, set sign flag
+      S = 1;
+    }else{
+    S = 0;
+  }
+
+  print_instruction(Op_cmp, &dest.Register, &src);
 }
 
 
@@ -123,7 +185,19 @@ void print_reg_contents(){
     reg.Count = 2;
     printf("%s: %d \n", Sim86_RegisterNameFromOperand(&reg), registers[i]);
   }
+  printf("\n");
+  printf("Flags: \n");
+  printf("S = %d \n", S);
+  printf("Z = %d \n", Z);
 }
+
+void printFlags(){
+  printf("\n");
+  printf("Flags: \n");
+  printf("S = %d \n", S);
+  printf("Z = %d \n", Z);
+}
+
 
 int main() {
   
@@ -139,25 +213,33 @@ int main() {
   u16 remaining = fileSize;// we need remaining bytes from current position to end of file
   instruction instr; // an instruction var that caseys function will fill
 
-  while(remaining > 0){
+  while(true){
     remaining = fileSize - offset;
+    if(remaining <= 0){
+      break;
+    }
     Sim86_Decode8086Instruction(remaining, buffer+offset, &instr);
     offset += instr.Size;
     //get the type of operation the current instruction is
+    // TODO: All of these functions are almost the same, refactor this into one common function where only the operation differs
     switch(instr.Op){
       case(Op_None):
         break; //if no operand do nothing!
       case(Op_mov):
         exec_mov(instr);
+        printFlags();
       break;
       case(Op_add):
         exec_add(instr);
+        printFlags();
       break;
       case(Op_sub):
         exec_sub(instr);
+        printFlags();
       break;
       case(Op_cmp):
         exec_cmp(instr);
+        printFlags();
       break;
     }
   }
