@@ -39,139 +39,7 @@ void print_instruction(operation_type op_type,  register_access* dest,  instruct
     const char* src_mem = Sim86_RegisterNameFromOperand(&src->Register);
     printf("%s %s, %s\n", op_mem, dest_mem, src_mem);
   }
-
-
 }
-
-void exec_mov(instruction instr){
-  // simulate instruction and print all of the registers current values
-  instruction_operand dest = instr.Operands[0];
-  instruction_operand src = instr.Operands[1];
-
-  // based on the index, offset and count we can read/write the bytes of the registers (a at 1, b at 2, ...,di at 8 )
-  // TODO: as for this exercise the Count will always be 2 (16 bit movs) and offset will be 0, we will ignore it for now
- 
-  // get the address of the dest register we want to write into
-  u32 destIndex = dest.Register.Index;
-
-  switch(src.Type){
-    case(Operand_None):
-      break;
-    case(Operand_Immediate):
-      // just write the value the dest index
-      registers[destIndex - 1] = src.Immediate.Value;
-      break;
-    case(Operand_Register):
-      registers[destIndex - 1] = registers[src.Register.Index - 1];
-      break;
-  }
-  print_instruction(Op_mov, &dest.Register, &src);
-}
-
-
-void exec_add(instruction instr){
-  //TODO: add a print of the current instruction
-  // as far as I understood, for the add instruction the flags are not relevant, so we'll just add them
-  instruction_operand dest = instr.Operands[0];
-  instruction_operand src = instr.Operands[1];
-  // get the address of the dest register we want to write into
-  u32 destIndex = dest.Register.Index;
-
-  switch(src.Type){
-    case(Operand_None):
-      break;
-    case(Operand_Immediate):
-      // just write the value the dest index
-      registers[destIndex - 1] += src.Immediate.Value;
-      break;
-    case(Operand_Register):
-      registers[destIndex - 1] += registers[src.Register.Index - 1];
-      break;
-  }
-  // set the flags
-    if (registers[destIndex - 1] == 0b0){
-      Z = 1;
-    }else{
-    Z = 0;
-  }
-    if((registers[destIndex - 1]) >> 15) {
-      //if highest bit is set, set sign flag
-      S = 1;
-    }else{
-    S = 0;
-  }
-  print_instruction(Op_add, &dest.Register, &src);
-}
-
-void exec_sub(instruction instr){
-
-  instruction_operand dest = instr.Operands[0];
-  instruction_operand src = instr.Operands[1];
-  // get the address of the dest register we want to write into
-  u32 destIndex = dest.Register.Index;
-
-  switch(src.Type){
-    case(Operand_None):
-      break;
-    case(Operand_Immediate):
-      // just write the value the dest index
-      registers[destIndex - 1] -= src.Immediate.Value;
-      break;
-    case(Operand_Register):
-      registers[destIndex - 1] -= registers[src.Register.Index - 1];
-      break;
-  }
-    if (registers[destIndex - 1] == 0b0){
-      Z = 1;
-    }else{
-    Z = 0;
-  }
-    if((registers[destIndex - 1]) >> 15) {
-      //if highest bit is set, set sign flag
-      S = 1;
-    }else{
-    S = 0;
-  }
-
-  print_instruction(Op_sub, &dest.Register, &src);
-}
-
-
-void exec_cmp(instruction instr){
-
-
-  instruction_operand dest = instr.Operands[0];
-  instruction_operand src = instr.Operands[1];
-  // get the address of the dest register we want to write into
-  u32 destIndex = dest.Register.Index;
-  s32 tmp;
-
-  switch(src.Type){
-    case(Operand_None):
-      break;
-    case(Operand_Immediate):
-      // just write the value the dest index
-      tmp = registers[destIndex - 1] - src.Immediate.Value;
-      break;
-    case(Operand_Register):
-      tmp = registers[destIndex - 1] - registers[src.Register.Index - 1];
-      break;
-  }
-    if (tmp == 0b0){
-      Z = 1;
-    }else{
-    Z = 0;
-    }
-    if(tmp >> 15) {
-      //if highest bit is set, set sign flag
-      S = 1;
-    }else{
-    S = 0;
-  }
-
-  print_instruction(Op_cmp, &dest.Register, &src);
-}
-
 
 void print_reg_contents(){
   // go through all regs and print their values
@@ -198,9 +66,67 @@ void printFlags(){
   printf("Z = %d \n", Z);
 }
 
+void setFlags(s16 regVal){
+    if (regVal == 0b0){
+      Z = 1;
+    }else{
+    Z = 0;
+    }
+    if(regVal >> 15) {
+      //if highest bit is set, set sign flag
+      S = 1;
+    }else{
+    S = 0;
+    }
+}
 
+void resetFlags(){
+  Z = S = 0;
+}
+void exec_instruction(instruction instr){
+
+  instruction_operand dest = instr.Operands[0];
+  instruction_operand src = instr.Operands[1];
+
+  // get the address of the dest register we want to write into
+  u32 destIndex = dest.Register.Index;
+  s16 tmp;
+  s16 srcValue;
+
+  switch(src.Type){
+    case(Operand_Immediate):
+      // just write the value the dest index
+      srcValue = src.Immediate.Value;
+      break;
+    case(Operand_Register):
+      srcValue = registers[src.Register.Index - 1];
+      break;
+  }
+
+  switch(instr.Op){
+    case(Op_None):
+      break; //if no operand do nothing!
+    case(Op_mov):
+      registers[destIndex - 1] = srcValue;
+      resetFlags();
+      break;
+    case(Op_add):
+      registers[destIndex - 1] += srcValue;
+      setFlags(registers[destIndex - 1]);
+      break;
+    case(Op_sub):
+      registers[destIndex - 1] -= srcValue;
+      setFlags(registers[destIndex - 1]);
+      break;
+    case(Op_cmp):
+      tmp =  registers[destIndex - 1] - srcValue;
+      setFlags(tmp);
+      break;
+  }
+  print_instruction(instr.Op, &dest.Register, &src);
+  printFlags();
+}
 int main() {
-  
   // first we need to read in the bytes from "listing_0044_register_movs"
   FILE* file = fopen("listing_0046_add_sub_cmp", "rb");
   if(!file) return 1;
@@ -221,29 +147,8 @@ int main() {
     Sim86_Decode8086Instruction(remaining, buffer+offset, &instr);
     offset += instr.Size;
     //get the type of operation the current instruction is
-    // TODO: All of these functions are almost the same, refactor this into one common function where only the operation differs
-    switch(instr.Op){
-      case(Op_None):
-        break; //if no operand do nothing!
-      case(Op_mov):
-        exec_mov(instr);
-        printFlags();
-      break;
-      case(Op_add):
-        exec_add(instr);
-        printFlags();
-      break;
-      case(Op_sub):
-        exec_sub(instr);
-        printFlags();
-      break;
-      case(Op_cmp):
-        exec_cmp(instr);
-        printFlags();
-      break;
-    }
+    exec_instruction(instr);
   }
-  
   print_reg_contents();
   free(buffer);
 }
